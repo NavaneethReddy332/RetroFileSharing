@@ -93,6 +93,11 @@ Preferred communication style: Simple, everyday language.
 - **Expiration Validation**: Server-side whitelisting of expiration times prevents indefinite file retention
 - **Error Handling**: Proper rollback on failed downloads to prevent download count corruption
 
+**Performance Optimizations (November 28, 2025)**
+- **Parallel Upload**: Large files now use 5MB chunks with 4 concurrent uploads for faster speeds
+- **Real-time Download Progress**: Terminal shows animated progress bar with percentage during downloads
+- **Improved Progress Tracking**: Upload and download progress updates on every percentage change
+
 **Validation**
 - Zod schemas generated from Drizzle ORM schemas for runtime type validation
 - Input validation using @hookform/resolvers for form handling
