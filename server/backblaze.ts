@@ -272,62 +272,35 @@ class BackblazeService {
       });
 
       const fileId = startResponse.data.fileId;
-      const partSize = 100 * 1024 * 1024; // 100MB parts (minimum for B2)
-      const parts: Buffer[] = [];
+      const partSize = 5 * 1024 * 1024; // 5MB parts for faster uploads
+      const maxConcurrentUploads = 4; // Upload 4 parts in parallel
+      
       let currentPart: Buffer[] = [];
       let currentPartSize = 0;
-      let partNumber = 1;
-      const sha1Array: string[] = [];
+      let totalRead = 0;
       let totalUploaded = 0;
+      
+      // Queue for parts to upload
+      const partsToUpload: { partNumber: number; buffer: Buffer }[] = [];
+      const uploadedParts: { partNumber: number; sha1: string }[] = [];
+      let nextPartNumber = 1;
 
-      // Collect data into parts
-      for await (const chunk of fileStream as any) {
-        currentPart.push(chunk);
-        currentPartSize += chunk.length;
-        totalUploaded += chunk.length;
+      let uploadCancelled = false;
 
-        // When we have a full part, upload it
-        if (currentPartSize >= partSize) {
-          const partBuffer = Buffer.concat(currentPart);
-          const uploadUrlResponse = await this.b2.getUploadPartUrl({
-            fileId: fileId,
-          });
-
-          const crypto = await import('crypto');
-          const sha1 = crypto.createHash('sha1').update(partBuffer).digest('hex');
-
-          const partResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': uploadUrlResponse.data.authorizationToken,
-              'X-Bz-Part-Number': partNumber.toString(),
-              'Content-Length': partBuffer.length.toString(),
-              'X-Bz-Content-Sha1': sha1,
-            },
-            body: partBuffer,
-          });
-
-          if (!partResponse.ok) {
-            const errorText = await partResponse.text();
+      // Helper to cancel the upload session
+      const cancelUpload = async () => {
+        if (!uploadCancelled) {
+          uploadCancelled = true;
+          try {
             await this.b2.cancelLargeFile({ fileId });
-            throw new Error(`B2 part upload failed: ${partResponse.status} ${errorText}`);
-          }
-
-          sha1Array.push(sha1);
-          partNumber++;
-          currentPart = [];
-          currentPartSize = 0;
-
-          if (progressEmitter) {
-            const percent = Math.min(95, Math.floor((totalUploaded / fileSize) * 100));
-            progressEmitter.emit('progress', { type: 'progress', percent });
+          } catch (cancelError) {
+            console.error('Failed to cancel large file upload:', cancelError);
           }
         }
-      }
+      };
 
-      // Upload remaining data as final part
-      if (currentPart.length > 0) {
-        const partBuffer = Buffer.concat(currentPart);
+      // Helper to upload a single part
+      const uploadPart = async (partNumber: number, partBuffer: Buffer): Promise<{ partNumber: number; sha1: string }> => {
         const uploadUrlResponse = await this.b2.getUploadPartUrl({
           fileId: fileId,
         });
@@ -348,12 +321,69 @@ class BackblazeService {
 
         if (!partResponse.ok) {
           const errorText = await partResponse.text();
-          await this.b2.cancelLargeFile({ fileId });
-          throw new Error(`B2 final part upload failed: ${partResponse.status} ${errorText}`);
+          await cancelUpload();
+          throw new Error(`B2 part ${partNumber} upload failed: ${partResponse.status} ${errorText}`);
         }
 
-        sha1Array.push(sha1);
+        totalUploaded += partBuffer.length;
+        if (progressEmitter) {
+          const percent = Math.min(95, Math.floor((totalUploaded / fileSize) * 100));
+          progressEmitter.emit('progress', { type: 'progress', percent });
+        }
+
+        return { partNumber, sha1 };
+      };
+
+      // Upload parts in parallel batches
+      const uploadBatch = async (parts: { partNumber: number; buffer: Buffer }[]): Promise<void> => {
+        try {
+          const results = await Promise.all(
+            parts.map(p => uploadPart(p.partNumber, p.buffer))
+          );
+          uploadedParts.push(...results);
+        } catch (batchError) {
+          await cancelUpload();
+          throw batchError;
+        }
+      };
+
+      // Collect data into parts
+      for await (const chunk of fileStream as any) {
+        currentPart.push(chunk);
+        currentPartSize += chunk.length;
+        totalRead += chunk.length;
+
+        // When we have a full part, queue it
+        if (currentPartSize >= partSize) {
+          const partBuffer = Buffer.concat(currentPart);
+          partsToUpload.push({ partNumber: nextPartNumber, buffer: partBuffer });
+          nextPartNumber++;
+          currentPart = [];
+          currentPartSize = 0;
+
+          // Upload in batches when we have enough parts queued
+          if (partsToUpload.length >= maxConcurrentUploads) {
+            const batch = partsToUpload.splice(0, maxConcurrentUploads);
+            await uploadBatch(batch);
+          }
+        }
       }
+
+      // Add remaining data as final part
+      if (currentPart.length > 0) {
+        const partBuffer = Buffer.concat(currentPart);
+        partsToUpload.push({ partNumber: nextPartNumber, buffer: partBuffer });
+      }
+
+      // Upload any remaining parts
+      while (partsToUpload.length > 0) {
+        const batch = partsToUpload.splice(0, maxConcurrentUploads);
+        await uploadBatch(batch);
+      }
+
+      // Sort parts by part number and extract sha1 array
+      uploadedParts.sort((a, b) => a.partNumber - b.partNumber);
+      const sha1Array = uploadedParts.map(p => p.sha1);
 
       // Finish the large file upload
       const finishResponse = await this.b2.finishLargeFile({
@@ -369,7 +399,7 @@ class BackblazeService {
       return {
         fileId: finishResponse.data.fileId,
         fileName: finishResponse.data.fileName,
-        uploadedBytes: totalUploaded,
+        uploadedBytes: totalRead,
       };
     } catch (error: any) {
       console.error('Backblaze large file upload error:', error);

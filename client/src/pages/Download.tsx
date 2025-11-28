@@ -140,6 +140,7 @@ export default function Download() {
 
     setIsDownloading(true);
     addLog(`INITIATING_DOWNLOAD`);
+    addLog(`DOWNLOADING  0%  [----------]`);
 
     try {
       const response = await fetch(`/api/download/${code}`, {
@@ -167,6 +168,9 @@ export default function Download() {
       
       let receivedLength = 0;
       const chunks: Uint8Array[] = [];
+      let lastDisplayedPercent = -1;
+      const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
+      let spinnerIndex = 0;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -178,11 +182,23 @@ export default function Download() {
         
         if (total > 0) {
           const percent = Math.round((receivedLength / total) * 100);
-          if (percent % 10 === 0) {
-            updateLastLog(`DOWNLOADING  ${percent}%  ${'='.repeat(Math.floor(percent / 10))}${'-'.repeat(10 - Math.floor(percent / 10))}`);
+          spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+          
+          if (percent !== lastDisplayedPercent) {
+            lastDisplayedPercent = percent;
+            const filled = Math.floor(percent / 10);
+            const empty = 10 - filled;
+            const progressBar = '#'.repeat(filled) + '-'.repeat(empty);
+            updateLastLog(`DOWNLOADING  ${percent}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
           }
+        } else {
+          spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+          const receivedMB = (receivedLength / (1024 * 1024)).toFixed(2);
+          updateLastLog(`DOWNLOADING  ${receivedMB}MB ${spinnerFrames[spinnerIndex]}`);
         }
       }
+
+      updateLastLog(`DOWNLOADING  100%  [##########] DONE`);
 
       const blob = new Blob(chunks);
       const url = window.URL.createObjectURL(blob);
@@ -194,7 +210,7 @@ export default function Download() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      addLog(`DOWNLOAD_COMPLETE`);
+      addLog(`DOWNLOAD_COMPLETE`, 'success');
       toast({
         title: "Download Complete",
         description: "Your file has been downloaded successfully.",
