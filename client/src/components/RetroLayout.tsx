@@ -28,13 +28,31 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </div>
           
           {/* Backblaze Logo Center */}
-          <div className="hidden md:flex items-center justify-center flex-1">
-            <img 
-              src="/backblaze_logo.png"
-              alt="Backblaze"
-              className="h-8 sm:h-10 object-contain max-w-xs"
+          <div className="flex items-center justify-center flex-1">
+            <div 
+              className="flex items-center gap-1"
               data-testid="img-backblaze-logo"
-            />
+            >
+              <span 
+                className="text-base sm:text-lg md:text-xl font-bold tracking-tight"
+                style={{ 
+                  color: '#e44c32',
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                  textShadow: '0 0 8px rgba(228, 76, 50, 0.5)'
+                }}
+              >
+                BACKBLAZE
+              </span>
+              <span 
+                className="text-[10px] sm:text-xs font-bold px-1 rounded"
+                style={{ 
+                  backgroundColor: '#e44c32',
+                  color: 'white'
+                }}
+              >
+                B2
+              </span>
+            </div>
           </div>
           
           <div className="flex items-center gap-2 flex-1 justify-end">
