@@ -1,0 +1,258 @@
+📘 PRD – “RetroSend” (Temporary Name)
+A 90s-style, no-CSS file-sharing web app with a fully modern backend.
+1. PRODUCT OVERVIEW
+
+RetroSend is a simple, fast, temporary file-sharing service inspired by SendAnywhere, but with a pure old-school 90s GUI (HTML only, inline fonts, tables, no CSS framework).
+Backend will be modern, secure, API-driven, and support file uploads, unique share codes, and download links.
+
+2. CORE FEATURES
+✔ 2.1 Upload File
+
+User selects a file.
+
+Backend stores file (local / cloud bucket).
+
+Generates 6-digit share code + download link.
+
+Shows success page with code + link.
+
+✔ 2.2 Download File
+
+User enters 6-digit code.
+
+Backend verifies validity + expiry.
+
+If valid → download file.
+
+If expired → show “expired” message.
+
+✔ 2.3 Temporary File Storage
+
+Files auto-delete after x hours (default: 24h).
+
+Cron job or scheduled cleanup.
+
+✔ 2.4 Modern API (Backend)
+
+Endpoints:
+
+POST /api/upload
+GET /api/download/:code
+DELETE /api/delete/:code
+
+✔ 2.5 Rate-Limit (optional)
+
+Prevent abuse: max 50 uploads/hr/IP.
+
+✔ 2.6 File Size Limit
+
+Max: 1 GB (configurable).
+
+Reject oversized uploads.
+
+3. NON-FUNCTIONAL REQUIREMENTS
+✔ Old-school UI
+
+No CSS (only <font>, <table>, <marquee>, <center>, etc.)
+
+Basic colors only.
+
+Classic “input + button” look.
+
+Page refresh navigation.
+
+✔ Modern Backend Code
+
+Node.js + Express (or FastAPI).
+
+Secure temporary object storage.
+
+Safe random code generator.
+
+Validation + sanitization.
+
+✔ Performance
+
+Upload speed up to modern standard.
+
+File streaming instead of loading in memory.
+
+✔ Security
+
+No permanent storage.
+
+Unique codes generated securely.
+
+Disable directory listing.
+
+Download limited by code.
+
+4. USER FLOWS
+4.1 Upload Flow
+
+User opens homepage → sees upload box.
+
+Clicks Choose File → selects file.
+
+Clicks Upload.
+
+Backend returns:
+
+6-digit code
+
+Direct download link
+
+Expiry countdown
+
+User shares code with receiver.
+
+4.2 Download Flow
+
+Receiver opens website.
+
+Enters 6-digit code.
+
+If valid → downloads.
+
+If expired → “File expired” page.
+
+5. PAGE LIST (Frontend)
+A. Home Page
+
+Logo (ASCII style)
+
+Upload section
+
+Separate section: “Enter Code to Download”
+
+Footer text: © RetroSend 1998
+
+B. Upload Result Page
+
+“File Uploaded Successfully!” title
+
+Share Code
+
+Download Link
+
+Expiry time
+
+Return home button
+
+C. Download Page
+
+If valid: “Download Ready”
+
+File name + size
+
+Download button
+
+Expiry info
+
+D. Error Pages
+
+Invalid code
+
+Expired file
+
+Oversized file
+
+Internal server error
+
+6. TECH STACK
+Frontend
+
+Pure HTML (no CSS)
+
+Some inline <font> styling
+
+<marquee> for retro animation
+
+Full page reload navigation
+
+No JavaScript required (optional small JS for form validation)
+
+Backend
+
+Option A: Node.js + Express (easiest for Replit)
+
+Multer for file uploads
+
+Crypto for code generation
+
+Cron for auto cleanup
+
+Option B: Python FastAPI
+
+FastAPI
+
+python-multipart
+
+background cleanup task
+
+Storage
+
+Choose one depending on Replit plan:
+
+Local /tmp/uploads (auto-delete)
+
+Supabase Storage (recommended, already used by you)
+
+AWS S3 bucket (if needed)
+
+7. API DESIGN
+POST /api/upload
+
+Request: multipart/form-data
+Response:
+
+{
+  "code": "483920",
+  "filename": "photo.jpg",
+  "url": "https://retrosend.com/d/483920",
+  "expires_at": "2025-11-23T10:00:00Z"
+}
+
+GET /api/download/:code
+
+Response:
+
+Stream file
+
+Or JSON error.
+
+DELETE /api/delete/:code
+
+Deletes file + metadata.
+
+8. DATA MODEL
+File Meta Table (JSON / DB)
+{
+  code: string,
+  filename: string,
+  path: string,
+  size: number,
+  mime: string,
+  created_at: timestamp,
+  expires_at: timestamp
+}
+
+9. CLEANUP SYSTEM
+
+Run every 1 hour.
+
+Compare expires_at.
+
+Delete expired files + meta.
+
+10. FUTURE UPGRADES (not required now)
+
+QR Code generation
+
+Multi-file zip upload
+
+Password protection
+
+Optional encryption
+
+P2P direct transfer mode
