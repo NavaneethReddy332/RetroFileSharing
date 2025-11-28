@@ -189,9 +189,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Updates (November 28, 2025)
 
-### Theme Update
+### Theme Update (Final)
 - Changed from Blue theme to **Black, Orange, White** color scheme
-- Updated all CSS variables for consistent theming
+- All CSS custom properties now use HSL format (H S% L%) without hsl() wrapper
+- All inline styles and CSS usages wrap variables with hsl(var(--...)) pattern
+- Added CSS variables for status colors (password strength meter)
+- Added CSS variables for animation overlay effects (scanlines, flicker)
+- Added Backblaze brand colors as CSS variables
 
 ### Fixed Issues
 - **External Icons**: Replaced with Lucide React icons (FileText, Lock, AlertTriangle, Copy, Eye, EyeOff)
