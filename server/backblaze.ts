@@ -16,6 +16,19 @@ export interface UploadProgressEvent {
   error?: string;
 }
 
+export interface UploadResult {
+  fileId: string;
+  fileName: string;
+  uploadedBytes: number;
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 class BackblazeService {
   private b2: B2;
   private config: B2Config;
@@ -78,7 +91,7 @@ class BackblazeService {
     fileName: string,
     contentType: string,
     progressEmitter?: EventEmitter
-  ): Promise<{ fileId: string; fileName: string }> {
+  ): Promise<UploadResult> {
     await this.ensureAuthorized();
 
     try {
@@ -131,6 +144,7 @@ class BackblazeService {
       return {
         fileId: result.fileId,
         fileName: result.fileName,
+        uploadedBytes: totalSize,
       };
     } catch (error: any) {
       if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
@@ -152,7 +166,7 @@ class BackblazeService {
     contentType: string,
     fileSize: number,
     progressEmitter?: EventEmitter
-  ): Promise<{ fileId: string; fileName: string }> {
+  ): Promise<UploadResult> {
     await this.ensureAuthorized();
 
     try {
@@ -200,9 +214,10 @@ class BackblazeService {
       const response = await fetch(uploadUrlResponse.data.uploadUrl, {
         method: 'POST',
         headers: headers,
-        body: progressStream as any,
-        duplex: 'half' as any,
-      });
+        body: progressStream as unknown as BodyInit,
+        // @ts-ignore - duplex is required for streaming but not in TypeScript types
+        duplex: 'half',
+      } as RequestInit);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -241,7 +256,7 @@ class BackblazeService {
     contentType: string,
     fileSize: number,
     progressEmitter?: EventEmitter
-  ): Promise<{ fileId: string; fileName: string }> {
+  ): Promise<UploadResult> {
     await this.ensureAuthorized();
 
     try {
@@ -374,7 +389,7 @@ class BackblazeService {
         fileName: fileName,
       });
 
-      return Buffer.from(response.data);
+      return Buffer.from(response.data as ArrayBuffer);
     } catch (error: any) {
       if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
         this.authorizationToken = null;

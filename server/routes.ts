@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { backblazeService } from "./backblaze";
+import { backblazeService, formatFileSize } from "./backblaze";
 import { randomBytes } from "crypto";
 import bcrypt from "bcrypt";
 import { insertGuestbookEntrySchema } from "@shared/schema";
@@ -117,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const uniqueFileName = `${Date.now()}-${randomBytes(8).toString('hex')}-${filename}`;
         
-        console.log(`[UPLOAD] File size: ${(fileSize / 1024 / 1024).toFixed(2)}MB, using ${fileSize >= LARGE_FILE_THRESHOLD ? 'large file API' : 'standard upload'}`);
+        console.log(`[UPLOAD] ${formatFileSize(fileSize)} | ${fileSize >= LARGE_FILE_THRESHOLD ? 'Large File API' : 'Standard'}`);
         
         // Set up limit handler
         let fileTruncated = false;
@@ -157,7 +157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Validate uploaded size matches expected size
-        const uploadedBytes = b2Upload.uploadedBytes || 0;
+        const uploadedBytes = b2Upload.uploadedBytes;
         const sizeTolerance = 1024; // 1KB tolerance for metadata
         if (Math.abs(uploadedBytes - fileSize) > sizeTolerance) {
           console.error(`[UPLOAD] Size mismatch: expected ${fileSize}, got ${uploadedBytes}`);
@@ -170,7 +170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(`File size mismatch: expected ${fileSize} bytes, but ${uploadedBytes} bytes were uploaded`);
         }
 
-        console.log(`[UPLOAD] Upload successful: ${(uploadedBytes / 1024 / 1024).toFixed(2)}MB uploaded`);
+        console.log(`[UPLOAD] Complete: ${formatFileSize(uploadedBytes)}`);
 
         const { password, maxDownloads, isOneTime } = formFields;
         
@@ -364,7 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { code } = req.params;
       const { password } = req.body;
       
-      console.log(`[DOWNLOAD] Starting download for code: ${code}`);
+      // Download started
       
       const file = await storage.getFileByCode(code);
 
@@ -390,7 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.incrementDownloadCount(file.id);
       const currentDownloadCount = file.downloadCount + 1;
 
-      console.log(`[DOWNLOAD] Streaming file from Backblaze: ${file.filename}`);
+      console.log(`[DOWNLOAD] ${formatFileSize(file.size)}`);
       
       let fileStream;
       try {
@@ -418,7 +418,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       fileStream.on('end', () => {
         streamCompleted = true;
         const duration = Date.now() - startTime;
-        console.log(`[DOWNLOAD] Stream completed for ${file.originalName} in ${duration}ms (${bytesTransferred} bytes)`);
+        console.log(`[DOWNLOAD] Complete: ${formatFileSize(bytesTransferred)} in ${(duration / 1000).toFixed(1)}s`);
       });
 
       fileStream.on('error', async (error) => {

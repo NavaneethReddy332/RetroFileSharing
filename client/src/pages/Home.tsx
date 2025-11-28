@@ -38,12 +38,19 @@ export default function Home() {
     };
   }, []);
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       addLog(`SELECTED_FILE: ${selectedFile.name}`);
-      addLog(`SIZE: ${(selectedFile.size / 1024).toFixed(2)} KB`);
+      addLog(`SIZE: ${formatFileSize(selectedFile.size)}`);
     }
   };
 
@@ -54,8 +61,8 @@ export default function Home() {
       setIsUploading(true);
       lastProgressRef.current = 0;
       
-      addLog(`INITIATING_UPLOAD: ${file.name}...`);
-      addLog(`FILE_SIZE: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+      addLog(`INITIATING_UPLOAD: ${file.name}`);
+      addLog(`FILE_SIZE: ${formatFileSize(file.size)}`);
       
       const uploadId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       
@@ -66,9 +73,12 @@ export default function Home() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'progress' && data.percent !== undefined) {
-            const spinnerChars = ['|', '/', '-', '\\'];
-            const spinnerIndex = Math.floor(Date.now() / 150) % spinnerChars.length;
-            updateLastLog(`UPLOADING TO BACKBLAZE  ${data.percent}% ${spinnerChars[spinnerIndex]}`);
+            const filled = Math.floor(data.percent / 10);
+            const empty = 10 - filled;
+            const progressBar = '#'.repeat(filled) + '.'.repeat(empty);
+            const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
+            const spinnerIndex = Math.floor(Date.now() / 100) % spinnerFrames.length;
+            updateLastLog(`UPLOADING TO BACKBLAZE  ${data.percent}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
           } else if (data.type === 'complete') {
             if (eventSourceRef.current) {
               eventSourceRef.current.close();
@@ -85,17 +95,18 @@ export default function Home() {
         }
       };
       
-      const spinnerChars = ['|', '/', '-', '\\'];
+      const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
       let spinnerIndex = 0;
-      addLog(`STREAMING_TO_SERVER  0%  ////////// ${spinnerChars[0]}`);
+      addLog(`STREAMING_TO_SERVER  0%  [..........] `);
       
       streamingSpinnerRef.current = setInterval(() => {
-        spinnerIndex = (spinnerIndex + 1) % spinnerChars.length;
+        spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
         const percentComplete = lastProgressRef.current;
-        const dots = '.'.repeat(Math.floor(percentComplete / 10));
-        const spaces = '/'.repeat(10 - Math.floor(percentComplete / 10));
-        updateLastLog(`STREAMING_TO_SERVER  ${percentComplete}%  ${dots}${spaces} ${spinnerChars[spinnerIndex]}`);
-      }, 150);
+        const filled = Math.floor(percentComplete / 10);
+        const empty = 10 - filled;
+        const progressBar = '#'.repeat(filled) + '.'.repeat(empty);
+        updateLastLog(`STREAMING_TO_SERVER  ${percentComplete}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
+      }, 100);
 
       const formData = new FormData();
       formData.append('fileSize', file.size.toString());
@@ -122,9 +133,8 @@ export default function Home() {
                 clearInterval(streamingSpinnerRef.current);
                 streamingSpinnerRef.current = null;
               }
-              const dots = '.'.repeat(10);
-              updateLastLog(`STREAMING_TO_SERVER  ${percentComplete}%  ${dots}`);
-              addLog(`UPLOADING TO BACKBLAZE  0% /`);
+              updateLastLog(`STREAMING_TO_SERVER  100%  [##########] DONE`);
+              addLog(`UPLOADING TO BACKBLAZE  0%  [..........] [    ]`);
             }
           }
         });
