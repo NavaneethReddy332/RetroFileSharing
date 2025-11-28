@@ -19,12 +19,12 @@ export function RetroLayout({ children }: RetroLayoutProps) {
   }, [logs]);
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 w-full" style={{ backgroundColor: 'var(--surface)' }}>
+    <div className="min-h-screen p-2 sm:p-4 w-full" style={{ backgroundColor: 'hsl(var(--surface))' }}>
       {/* Header */}
       <header className="mb-4">
-        <div className="border-2 p-3 sm:p-4 flex items-center justify-between font-bold shadow-md transition-colors duration-300" style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--header-border)' }}>
+        <div className="border-2 p-3 sm:p-4 flex items-center justify-between font-bold shadow-md transition-colors duration-300" style={{ backgroundColor: 'hsl(var(--header-bg))', borderColor: 'hsl(var(--header-border))' }}>
           <div className="flex items-center flex-1">
-            <span className="text-lg sm:text-xl font-retro tracking-widest transition-colors duration-300" style={{ color: 'var(--header-text)' }}>RETROSEND_V1.0</span>
+            <span className="text-lg sm:text-xl font-retro tracking-widest transition-colors duration-300" style={{ color: 'hsl(var(--header-text))' }}>RETROSEND_V1.0</span>
           </div>
           
           {/* Backblaze Logo Center */}
@@ -36,9 +36,9 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               <span 
                 className="text-base sm:text-lg md:text-xl font-bold tracking-tight"
                 style={{ 
-                  color: '#e44c32',
+                  color: 'hsl(var(--brand-backblaze))',
                   fontFamily: 'system-ui, -apple-system, sans-serif',
-                  textShadow: '0 0 8px rgba(228, 76, 50, 0.5)'
+                  textShadow: '0 0 8px hsl(var(--brand-backblaze) / 0.5)'
                 }}
               >
                 BACKBLAZE
@@ -46,8 +46,8 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               <span 
                 className="text-[10px] sm:text-xs font-bold px-1 rounded"
                 style={{ 
-                  backgroundColor: '#e44c32',
-                  color: 'white'
+                  backgroundColor: 'hsl(var(--brand-backblaze))',
+                  color: 'hsl(var(--brand-backblaze-text))'
                 }}
               >
                 B2
@@ -60,7 +60,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="flex flex-col gap-1 p-2 hover:bg-white/10 transition-colors border-2"
-              style={{ borderColor: 'var(--border-highlight)' }}
+              style={{ borderColor: 'hsl(var(--border-highlight))' }}
               aria-label="Toggle menu"
               data-testid="button-hamburger-menu"
             >
@@ -68,19 +68,19 @@ export function RetroLayout({ children }: RetroLayoutProps) {
                 className={`block w-6 h-0.5 transition-all duration-300 ${
                   isMenuOpen ? 'rotate-45 translate-y-1.5' : ''
                 }`}
-                style={{ backgroundColor: 'var(--header-text)' }}
+                style={{ backgroundColor: 'hsl(var(--header-text))' }}
               ></span>
               <span
                 className={`block w-6 h-0.5 transition-all duration-300 ${
                   isMenuOpen ? 'opacity-0' : ''
                 }`}
-                style={{ backgroundColor: 'var(--header-text)' }}
+                style={{ backgroundColor: 'hsl(var(--header-text))' }}
               ></span>
               <span
                 className={`block w-6 h-0.5 transition-all duration-300 ${
                   isMenuOpen ? '-rotate-45 -translate-y-1.5' : ''
                 }`}
-                style={{ backgroundColor: 'var(--header-text)' }}
+                style={{ backgroundColor: 'hsl(var(--header-text))' }}
               ></span>
             </button>
           </div>
@@ -92,7 +92,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
         className={`fixed inset-0 backdrop-blur-sm z-50 transition-all duration-300 ${
           isMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
-        style={{ backgroundColor: 'color-mix(in srgb, var(--terminal-bg) 80%, transparent)' }}
+        style={{ backgroundColor: 'color-mix(in srgb, hsl(var(--terminal-bg)) 80%, transparent)' }}
         onClick={() => setIsMenuOpen(false)}
         data-testid="menu-overlay"
       >
@@ -101,18 +101,18 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             isMenuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
           style={{ 
-            backgroundColor: 'var(--header-bg)',
-            borderColor: 'var(--header-border)'
+            backgroundColor: 'hsl(var(--header-bg))',
+            borderColor: 'hsl(var(--header-border))'
           }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="p-6 flex flex-col gap-4">
             <div className="flex justify-between items-center mb-4">
-              <span className="font-retro text-lg transition-colors duration-300" style={{ color: 'var(--header-text)' }}>MENU</span>
+              <span className="font-retro text-lg transition-colors duration-300" style={{ color: 'hsl(var(--header-text))' }}>MENU</span>
               <button
                 onClick={() => setIsMenuOpen(false)}
                 className="text-2xl transition-colors duration-300 hover:opacity-70"
-                style={{ color: 'var(--header-text)' }}
+                style={{ color: 'hsl(var(--header-text))' }}
                 data-testid="button-close-menu"
               >
                 ×
@@ -122,7 +122,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <Link
               href="/"
               className="no-underline hover:underline text-lg font-sans py-2 transition-opacity duration-300 hover:opacity-70"
-              style={{ color: 'var(--header-text)' }}
+              style={{ color: 'hsl(var(--header-text))' }}
               onClick={() => setIsMenuOpen(false)}
               data-testid="link-home"
             >
@@ -131,7 +131,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <Link
               href="/upload"
               className="no-underline hover:underline text-lg font-sans py-2 transition-opacity duration-300 hover:opacity-70"
-              style={{ color: 'var(--header-text)' }}
+              style={{ color: 'hsl(var(--header-text))' }}
               onClick={() => setIsMenuOpen(false)}
               data-testid="link-upload"
             >
@@ -140,7 +140,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <Link
               href="/download"
               className="no-underline hover:underline text-lg font-sans py-2 transition-opacity duration-300 hover:opacity-70"
-              style={{ color: 'var(--header-text)' }}
+              style={{ color: 'hsl(var(--header-text))' }}
               onClick={() => setIsMenuOpen(false)}
               data-testid="link-download"
             >
@@ -149,7 +149,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <Link
               href="/guestbook"
               className="no-underline hover:underline text-lg font-sans py-2 transition-opacity duration-300 hover:opacity-70"
-              style={{ color: 'var(--header-text)' }}
+              style={{ color: 'hsl(var(--header-text))' }}
               onClick={() => setIsMenuOpen(false)}
               data-testid="link-guestbook"
             >
@@ -161,9 +161,9 @@ export function RetroLayout({ children }: RetroLayoutProps) {
 
       {/* Marquee Banner */}
       <div className="mb-4">
-        <div className="p-2 font-bold font-sans text-center marquee-container border-2 text-xs sm:text-sm transition-colors duration-300" style={{ backgroundColor: 'var(--header-bg)', borderColor: 'var(--header-border)', color: 'var(--header-text)' }}>
-          <div className="marquee-content">
-            WELCOME TO RETROSEND *** UPLOAD FILES FAST *** NO LOGS *** 100% FREE *** BEST VIEWED IN NETSCAPE NAVIGATOR 4.0
+        <div className="p-2 font-bold font-sans text-center overflow-hidden border-2 text-xs sm:text-sm transition-colors duration-300" style={{ backgroundColor: 'hsl(var(--header-bg))', borderColor: 'hsl(var(--header-border))', color: 'hsl(var(--header-text))' }}>
+          <div className="whitespace-nowrap animate-marquee inline-block">
+            WELCOME TO RETROSEND *** UPLOAD FILES FAST *** SECURE CLOUD STORAGE *** NO ACCOUNT REQUIRED *** FILES AUTO-DELETE
           </div>
         </div>
       </div>
@@ -171,14 +171,14 @@ export function RetroLayout({ children }: RetroLayoutProps) {
       {/* Main Layout Grid */}
       <div className="grid grid-cols-1 md:grid-cols-[minmax(320px,400px)_1fr] gap-4">
         {/* Main Content - appears first on mobile */}
-        <main className="border-2 p-4 sm:p-6 min-h-[400px] order-1 md:order-2 transition-colors duration-300" style={{ backgroundColor: 'var(--input-bg)', borderColor: 'var(--border-shadow)' }}>
+        <main className="border-2 p-4 sm:p-6 min-h-[400px] order-1 md:order-2 transition-colors duration-300" style={{ backgroundColor: 'hsl(var(--input-bg))', borderColor: 'hsl(var(--border-shadow))' }}>
           {children}
         </main>
 
         {/* Sidebar - appears second on mobile, first on desktop */}
         <aside className="space-y-4 order-2 md:order-1">
           {/* Video Feed */}
-          <div className="border-2 relative overflow-hidden h-[120px] sm:h-[140px] transition-colors duration-300" style={{ borderColor: 'var(--border-shadow)', backgroundColor: 'var(--terminal-bg)' }}>
+          <div className="border-2 relative overflow-hidden h-[120px] sm:h-[140px] transition-colors duration-300" style={{ borderColor: 'hsl(var(--border-shadow))', backgroundColor: 'hsl(var(--terminal-bg))' }}>
             <video 
               src={generatedVideo} 
               autoPlay 
@@ -197,7 +197,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <div 
               className="absolute inset-0 pointer-events-none z-10"
               style={{
-                background: 'repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.08) 0px, rgba(0, 0, 0, 0.08) 1px, transparent 1px, transparent 2px)',
+                background: 'repeating-linear-gradient(0deg, hsl(var(--overlay-scanline) / 0.08) 0px, hsl(var(--overlay-scanline) / 0.08) 1px, transparent 1px, transparent 2px)',
                 animation: 'scanline 8s linear infinite',
               }}
             />
@@ -206,7 +206,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <div 
               className="absolute inset-0 pointer-events-none z-10 opacity-5"
               style={{
-                background: 'rgba(255, 255, 255, 0.03)',
+                background: 'hsl(var(--overlay-flicker) / 0.03)',
                 animation: 'flicker 0.15s infinite',
               }}
             />
@@ -217,7 +217,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               className="retro-terminal-scroll relative h-full overflow-y-auto p-3 font-mono text-[10px] sm:text-xs font-light"
             >
               {/* Header Bar */}
-              <div className="pb-2 mb-3 text-center sticky top-0 z-20" style={{ color: 'color-mix(in srgb, var(--terminal-text) 70%, transparent)' }}>
+              <div className="pb-2 mb-3 text-center sticky top-0 z-20" style={{ color: 'color-mix(in srgb, hsl(var(--terminal-text)) 70%, transparent)' }}>
                 <span className="tracking-widest text-[9px] sm:text-[10px]">
                   ◆ SYSTEM TERMINAL ◆
                 </span>
@@ -240,7 +240,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
                     if (log.type !== 'info' && log.type !== undefined) {
                       return undefined;
                     }
-                    return { color: 'var(--terminal-text)' };
+                    return { color: 'hsl(var(--terminal-text))' };
                   };
                   
                   const getPrefix = () => {
@@ -274,15 +274,15 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </div>
           
           {/* Visitor Counter */}
-          <div className="text-center border-2 p-2 font-retro text-xs sm:text-sm transition-colors duration-300" style={{ borderColor: 'var(--border-shadow)', backgroundColor: 'var(--terminal-bg)', color: 'var(--terminal-text)' }}>
+          <div className="text-center border-2 p-2 font-retro text-xs sm:text-sm transition-colors duration-300" style={{ borderColor: 'hsl(var(--border-shadow))', backgroundColor: 'hsl(var(--terminal-bg))', color: 'hsl(var(--terminal-text))' }}>
             VISITORS: 003482
           </div>
         </aside>
       </div>
       
       {/* Footer */}
-      <footer className="mt-6 text-center text-xs sm:text-sm font-mono transition-colors duration-300" style={{ color: 'var(--text-secondary)' }}>
-        <hr className="mb-3" style={{ borderColor: 'var(--border-shadow)' }} />
+      <footer className="mt-6 text-center text-xs sm:text-sm font-mono transition-colors duration-300" style={{ color: 'hsl(var(--text-secondary))' }}>
+        <hr className="mb-3" style={{ borderColor: 'hsl(var(--border-shadow))' }} />
         <div>
           (c) 1998 RetroSend Inc. All rights reserved.<br />
           Made with Notepad.

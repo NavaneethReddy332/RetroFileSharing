@@ -80,14 +80,14 @@ export default function Guestbook() {
     <RetroLayout>
       <center>
         <h2 className="text-2xl sm:text-3xl font-bold mb-4">
-          <span style={{ color: 'var(--accent)' }}>★ GUESTBOOK ★</span>
+          <span style={{ color: 'hsl(var(--accent))' }}>★ GUESTBOOK ★</span>
         </h2>
         <p className="mb-6">Sign our retro guestbook! Leave a message for other visitors.</p>
       </center>
 
       {/* Sign Guestbook Form */}
-      <div className="border-2 p-4 sm:p-6 mb-6" style={{ backgroundColor: 'var(--panel-light)', borderColor: 'var(--border-highlight)' }}>
-        <h3 className="font-bold text-lg mb-4" style={{ color: 'var(--accent)' }}>Sign the Guestbook</h3>
+      <div className="border-2 p-4 sm:p-6 mb-6" style={{ backgroundColor: 'hsl(var(--panel-light))', borderColor: 'hsl(var(--border-highlight))' }}>
+        <h3 className="font-bold text-lg mb-4" style={{ color: 'hsl(var(--accent))' }}>Sign the Guestbook</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -152,7 +152,7 @@ export default function Guestbook() {
               required
               data-testid="textarea-message"
             />
-            <small style={{ color: 'var(--text-secondary)' }}>{message.length}/500 characters</small>
+            <small style={{ color: 'hsl(var(--text-secondary))' }}>{message.length}/500 characters</small>
           </div>
 
           <button 
@@ -166,23 +166,23 @@ export default function Guestbook() {
         </form>
       </div>
 
-      <hr className="my-6" style={{ borderColor: 'var(--border-shadow)' }} />
+      <hr className="my-6" style={{ borderColor: 'hsl(var(--border-shadow))' }} />
 
       {/* Guestbook Entries */}
       <div>
-        <h3 className="font-bold text-lg mb-4" style={{ color: 'var(--accent)' }}>Recent Entries</h3>
+        <h3 className="font-bold text-lg mb-4" style={{ color: 'hsl(var(--accent))' }}>Recent Entries</h3>
         
         {isLoading && (
           <center>
             <p>Loading guestbook entries...</p>
-            <div className="w-64 h-4 border-2 p-0.5 relative mt-2" style={{ borderColor: 'var(--border-highlight)', backgroundColor: 'var(--input-bg)' }}>
-              <div className="h-full animate-[width_2s_ease-in-out_infinite]" style={{ width: '50%', backgroundColor: 'var(--accent)' }}></div>
+            <div className="w-64 h-4 border-2 p-0.5 relative mt-2" style={{ borderColor: 'hsl(var(--border-highlight))', backgroundColor: 'hsl(var(--input-bg))' }}>
+              <div className="h-full animate-[width_2s_ease-in-out_infinite]" style={{ width: '50%', backgroundColor: 'hsl(var(--accent))' }}></div>
             </div>
           </center>
         )}
 
         {!isLoading && entries && entries.length === 0 && (
-          <div className="border-2 p-4 text-center" style={{ backgroundColor: 'var(--panel-light)', borderColor: 'var(--accent)' }}>
+          <div className="border-2 p-4 text-center" style={{ backgroundColor: 'hsl(var(--panel-light))', borderColor: 'hsl(var(--accent))' }}>
             <p>No entries yet. Be the first to sign our guestbook!</p>
           </div>
         )}
@@ -192,21 +192,21 @@ export default function Guestbook() {
             {entries.map((entry) => (
               <div 
                 key={entry.id} 
-                className="border-2 p-4" style={{ backgroundColor: 'var(--panel-light)', borderColor: 'var(--border-highlight)' }}
+                className="border-2 p-4" style={{ backgroundColor: 'hsl(var(--panel-light))', borderColor: 'hsl(var(--border-highlight))' }}
                 data-testid={`entry-${entry.id}`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
                   <div>
-                    <span className="font-bold" style={{ color: 'var(--accent)' }} data-testid={`name-${entry.id}`}>
+                    <span className="font-bold" style={{ color: 'hsl(var(--accent))' }} data-testid={`name-${entry.id}`}>
                       {entry.displayName}
                     </span>
                     {entry.location && (
-                      <span className="text-sm ml-2" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="text-sm ml-2" style={{ color: 'hsl(var(--text-secondary))' }}>
                         from {entry.location}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <span className="text-xs" style={{ color: 'hsl(var(--text-secondary))' }}>
                     {formatDate(entry.createdAt)}
                   </span>
                 </div>
@@ -223,7 +223,7 @@ export default function Guestbook() {
                   </div>
                 )}
                 
-                <div className="border-2 p-3" style={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border-shadow)' }} data-testid={`message-${entry.id}`}>
+                <div className="border-2 p-3" style={{ backgroundColor: 'hsl(var(--panel))', borderColor: 'hsl(var(--border-shadow))' }} data-testid={`message-${entry.id}`}>
                   {entry.message}
                 </div>
               </div>
@@ -232,10 +232,10 @@ export default function Guestbook() {
         )}
       </div>
 
-      <hr className="my-6" style={{ borderColor: 'var(--border-shadow)' }} />
+      <hr className="my-6" style={{ borderColor: 'hsl(var(--border-shadow))' }} />
       
       <center>
-        <small style={{ color: 'var(--text-secondary)' }}>
+        <small style={{ color: 'hsl(var(--text-secondary))' }}>
           <img 
             src="https://win98icons.alexmeub.com/icons/png/globe_internet-0.png" 
             width="24" 

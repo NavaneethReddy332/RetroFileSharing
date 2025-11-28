@@ -54,7 +54,7 @@ export function validateFile(
   if (blockedExtension) {
     return {
       valid: false,
-      error: `File type '.${blockedExtension}' is not allowed for security reasons. Executable files and scripts cannot be uploaded.`,
+      error: `File type '.${blockedExtension}' is blocked. Allowed: documents, images, videos, audio, archives (zip, rar), and most common file types.`,
       fileExtension,
       fileName,
     };
@@ -64,7 +64,7 @@ export function validateFile(
   if (BLOCKED_EXTENSIONS.includes(fileExtension)) {
     return {
       valid: false,
-      error: `File type '.${fileExtension}' is not allowed for security reasons. Executable files and scripts cannot be uploaded.`,
+      error: `File type '.${fileExtension}' is blocked. Allowed: documents, images, videos, audio, archives (zip, rar), and most common file types.`,
       fileExtension,
       fileName,
     };
@@ -74,7 +74,7 @@ export function validateFile(
   if (BLOCKED_MIME_TYPES.includes(mimeType.toLowerCase())) {
     return {
       valid: false,
-      error: `File type '${mimeType}' is not allowed for security reasons.`,
+      error: `This file type is blocked. Allowed: documents, images, videos, audio, archives, and most common file types.`,
       fileExtension,
       fileName,
     };

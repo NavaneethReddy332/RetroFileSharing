@@ -1,9 +1,10 @@
 import { useLocation, useRoute } from "wouter";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { RetroLayout } from "../components/RetroLayout";
 import { useTerminal } from "../context/TerminalContext";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { FileText, Lock, AlertTriangle, Copy, Eye, EyeOff } from "lucide-react";
 
 interface FileInfo {
   code: string;
@@ -60,6 +61,7 @@ export default function Download() {
 
   const [downloadPassword, setDownloadPassword] = useState("");
   const [showPasswordInput, setShowPasswordInput] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [downloadLink, setDownloadLink] = useState<string | null>(null);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -348,7 +350,7 @@ export default function Download() {
       {status === 'input' && (
          <center>
            <p>Please enter the 6-digit code to retrieve your file.</p>
-           <form onSubmit={handleManualSubmit} className="p-8 border-2 shadow-md inline-block" style={{ backgroundColor: 'var(--panel)', borderColor: 'var(--border-highlight)' }}>
+           <form onSubmit={handleManualSubmit} className="p-8 border-2 shadow-md inline-block" style={{ backgroundColor: 'hsl(var(--panel))', borderColor: 'hsl(var(--border-highlight))' }}>
              Code: <input 
                type="text" 
                value={inputCode}
@@ -368,60 +370,82 @@ export default function Download() {
       {status === 'searching' && (
         <center>
           <p>Connecting to server...</p>
-          <div className="w-64 h-4 border-2 p-0.5 relative" style={{ borderColor: 'var(--border-highlight)', backgroundColor: 'var(--input-bg)' }}>
-             <div className="h-full animate-[width_2s_ease-in-out_infinite]" style={{ width: '50%', backgroundColor: 'var(--accent)' }}></div>
+          <div className="w-64 h-4 border-2 p-0.5 relative" style={{ borderColor: 'hsl(var(--border-highlight))', backgroundColor: 'hsl(var(--input-bg))' }}>
+             <div className="h-full animate-[width_2s_ease-in-out_infinite]" style={{ width: '50%', backgroundColor: 'hsl(var(--accent))' }}></div>
           </div>
           <p><small>Please wait...</small></p>
         </center>
       )}
 
       {status === 'found' && fileInfo && (
-        <div className="border-2 p-4" style={{ borderColor: 'var(--accent)', backgroundColor: 'var(--panel)' }} data-testid="file-info">
-          <table width="100%">
-            <tbody>
-              <tr>
-                <td width="64">
-                  <img src="https://win98icons.alexmeub.com/icons/png/file_lines-0.png" width="48" alt="File" />
-                </td>
-                <td>
-                  <b>File Found!</b><br />
-                  Filename: <code data-testid="text-filename">{fileInfo.originalName}</code><br />
-                  Size: {formatFileSize(fileInfo.size)}<br />
-                  Expires: {getTimeRemaining(fileInfo.expiresAt)}<br />
-                  {fileInfo.isPasswordProtected === 1 && (
-                    <><img src="https://win98icons.alexmeub.com/icons/png/lock_key-0.png" width="16" className="inline" alt="Protected" /> Password Protected<br /></>
-                  )}
-                  {fileInfo.isOneTime === 1 && (
-                    <><b style={{ color: 'var(--text-primary)' }}>⚠ One-time download only</b><br /></>
-                  )}
-                  Downloads: <span data-testid="text-download-count">{fileInfo.downloadCount}</span>
-                  {fileInfo.maxDownloads && (
-                    <> / {fileInfo.maxDownloads} <span className="text-sm">(Remaining: {fileInfo.remainingDownloads})</span></>
-                  )}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="border-2 p-4" style={{ borderColor: 'hsl(var(--accent))', backgroundColor: 'hsl(var(--panel))' }} data-testid="file-info">
+          <div className="flex flex-col sm:flex-row gap-4 items-start">
+            <div className="flex-shrink-0">
+              <FileText size={48} style={{ color: 'hsl(var(--accent))' }} aria-hidden="true" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="font-bold text-lg" style={{ color: 'hsl(var(--accent))' }}>File Found!</div>
+              <div>
+                <span className="font-semibold">Filename:</span>{' '}
+                <code data-testid="text-filename" className="break-all">{fileInfo.originalName}</code>
+              </div>
+              <div><span className="font-semibold">Size:</span> {formatFileSize(fileInfo.size)}</div>
+              <div><span className="font-semibold">Expires:</span> {getTimeRemaining(fileInfo.expiresAt)}</div>
+              {fileInfo.isPasswordProtected === 1 && (
+                <div className="flex items-center gap-1">
+                  <Lock size={16} style={{ color: 'hsl(var(--accent))' }} aria-hidden="true" />
+                  <span>Password Protected</span>
+                </div>
+              )}
+              {fileInfo.isOneTime === 1 && (
+                <div className="flex items-center gap-1 font-bold" style={{ color: 'hsl(var(--accent))' }}>
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <span>One-time download only</span>
+                </div>
+              )}
+              <div>
+                <span className="font-semibold">Downloads:</span>{' '}
+                <span data-testid="text-download-count">{fileInfo.downloadCount}</span>
+                {fileInfo.maxDownloads && (
+                  <span> / {fileInfo.maxDownloads} <span className="text-sm opacity-80">(Remaining: {fileInfo.remainingDownloads})</span></span>
+                )}
+              </div>
+            </div>
+          </div>
           
-          <br />
+          <div className="mt-4" />
           
           {showPasswordInput && (
-            <div className="mb-4 border-2 p-3" style={{ backgroundColor: 'var(--panel-light)', borderColor: 'var(--accent)' }}>
-              <label className="block mb-2 font-bold">Enter Password:</label>
-              <input 
-                type="password" 
-                value={downloadPassword}
-                onChange={(e) => setDownloadPassword(e.target.value)}
-                className="retro-input w-full mb-2"
-                placeholder="Enter file password"
-                autoComplete="off"
-                data-testid="input-download-password"
-              />
+            <div className="mb-4 border-2 p-3" style={{ backgroundColor: 'hsl(var(--panel-light))', borderColor: 'hsl(var(--accent))' }}>
+              <label htmlFor="download-password" className="block mb-2 font-bold">Enter Password:</label>
+              <div className="relative">
+                <input 
+                  id="download-password"
+                  type={showPassword ? "text" : "password"}
+                  value={downloadPassword}
+                  onChange={(e) => setDownloadPassword(e.target.value)}
+                  className="retro-input w-full pr-10"
+                  placeholder="Enter file password"
+                  autoComplete="off"
+                  aria-label="File download password"
+                  data-testid="input-download-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+                  style={{ color: 'hsl(var(--text-secondary))' }}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  data-testid="button-toggle-password-visibility"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
           )}
           
           {downloadLink && (
-            <div className="mb-4 border-2 p-3" style={{ backgroundColor: 'var(--panel-light)', borderColor: 'var(--accent)' }}>
+            <div className="mb-4 border-2 p-3" style={{ backgroundColor: 'hsl(var(--panel-light))', borderColor: 'hsl(var(--accent))' }}>
               <label className="block mb-2 font-bold">Your Shareable Download Link:</label>
               <div className="flex gap-2">
                 <input 
@@ -429,10 +453,16 @@ export default function Download() {
                   value={downloadLink}
                   readOnly
                   className="retro-input flex-1 text-xs"
+                  aria-label="Shareable download link"
                   data-testid="text-download-link"
                 />
-                <button onClick={copyToClipboard} className="retro-button text-sm px-4" data-testid="button-copy-link">
-                  Copy
+                <button 
+                  onClick={copyToClipboard} 
+                  className="retro-button text-sm px-4 flex items-center gap-1" 
+                  data-testid="button-copy-link"
+                  aria-label="Copy download link to clipboard"
+                >
+                  <Copy size={14} aria-hidden="true" /> Copy
                 </button>
               </div>
               <small className="block mt-2">
@@ -469,8 +499,8 @@ export default function Download() {
 
       {status === 'error' && (
         <center>
-          <img src="https://win98icons.alexmeub.com/icons/png/msg_warning-0.png" alt="Error" />
-          <h3 className="mt-4" style={{ color: 'var(--text-primary)' }}>Error 404: File Not Found</h3>
+          <AlertTriangle size={64} style={{ color: 'hsl(var(--accent))' }} aria-hidden="true" />
+          <h3 className="mt-4" style={{ color: 'hsl(var(--text-primary))' }}>Error 404: File Not Found</h3>
           <p>The file you are looking for has expired or does not exist.</p>
           <br />
           <button onClick={() => setLocation("/")} className="retro-button" data-testid="button-back-home">Back to Home</button>

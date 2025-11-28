@@ -6,29 +6,29 @@ interface PasswordStrengthMeterProps {
 
 const strengthColors: Record<PasswordStrength, { bg: string; text: string; border: string }> = {
   'NONE': {
-    bg: '#d9d9d9',
-    text: '#666666',
-    border: '#999999'
+    bg: 'hsl(var(--status-none-bg))',
+    text: 'hsl(var(--status-none-text))',
+    border: 'hsl(var(--status-none-border))'
   },
   'WEAK': {
-    bg: '#ff6b6b',
-    text: '#8b0000',
-    border: '#cc0000'
+    bg: 'hsl(var(--status-weak-bg))',
+    text: 'hsl(var(--status-weak-text))',
+    border: 'hsl(var(--status-weak-border))'
   },
   'MEDIUM': {
-    bg: '#ffd93d',
-    text: '#8b6914',
-    border: '#cc9a1f'
+    bg: 'hsl(var(--status-medium-bg))',
+    text: 'hsl(var(--status-medium-text))',
+    border: 'hsl(var(--status-medium-border))'
   },
   'STRONG': {
-    bg: '#6bcf7f',
-    text: '#0d5c1f',
-    border: '#1a8c2e'
+    bg: 'hsl(var(--status-strong-bg))',
+    text: 'hsl(var(--status-strong-text))',
+    border: 'hsl(var(--status-strong-border))'
   },
   'VERY STRONG': {
-    bg: '#51cf66',
-    text: '#0a4d16',
-    border: '#147a28'
+    bg: 'hsl(var(--status-verystrong-bg))',
+    text: 'hsl(var(--status-verystrong-text))',
+    border: 'hsl(var(--status-verystrong-border))'
   }
 };
 
@@ -48,7 +48,7 @@ export function PasswordStrengthMeter({ password }: PasswordStrengthMeterProps) 
         className="h-3 border-2 transition-colors duration-300"
         style={{ 
           borderColor: colors.border,
-          backgroundColor: '#ffffff'
+          backgroundColor: 'hsl(var(--text-primary))'
         }}
       >
         <div 
@@ -77,7 +77,7 @@ export function PasswordStrengthMeter({ password }: PasswordStrengthMeterProps) 
         {/* Feedback */}
         <div 
           className="text-xs flex-1 transition-colors duration-300"
-          style={{ color: 'var(--text-secondary)' }}
+          style={{ color: 'hsl(var(--text-secondary))' }}
           data-testid="strength-feedback"
         >
           {result.feedback}

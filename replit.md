@@ -187,39 +187,41 @@ Preferred communication style: Simple, everyday language.
 - Static assets served from `client/public/`
 - Path aliases configured: @/ for client source, @shared for shared code, @assets for attached assets
 
-## Known Issues & Flaws (November 28, 2025)
+## Recent Updates (November 28, 2025)
 
-### UI/UX Issues
+### Theme Update
+- Changed from Blue theme to **Black, Orange, White** color scheme
+- Updated all CSS variables for consistent theming
 
-1. **External Image Dependencies**: Uses external URLs for icons (win98icons.alexmeub.com) which may break if the external service goes down
-2. **Marquee Text Truncation**: The welcome marquee text in the header gets cut off on smaller screens
-3. **Non-Responsive Table Layout**: File info display uses HTML tables which don't adapt well to mobile screens
-4. **Outdated Joke Content**: Homepage says "Fast 56k modem optimization" and "Works in Netscape & IE" which may confuse modern users who don't get the retro joke
-5. **Form Accessibility**: Password inputs lack proper ARIA labels for screen readers
-6. **No Drag-and-Drop**: File selection requires clicking the input button; no drag-and-drop zone for convenience
-7. **Limited File Type Feedback**: When a file is blocked (e.g., .exe), error messaging could be more helpful about what types ARE allowed
+### Fixed Issues
+- **External Icons**: Replaced with Lucide React icons (FileText, Lock, AlertTriangle, Copy, Eye, EyeOff)
+- **Responsive File Info**: Replaced HTML tables with flex layout for mobile compatibility
+- **Marquee Text**: Fixed animation and updated content to be clearer
+- **Outdated Content**: Updated "Why use RetroSend?" section with accurate feature descriptions
+- **Form Accessibility**: Added proper ARIA labels to all password inputs
+- **Drag-and-Drop**: Added drag-and-drop file upload zone with visual feedback
+- **File Type Feedback**: Improved error messages to show allowed file types
+- **Password Visibility**: Added show/hide password toggle buttons on all password fields
+- **Password Confirmation**: Added confirmation field when setting file protection password
+- **Copy Buttons**: Added copy buttons for share code and download link on result page
+- **Rate Limiter Warnings**: Fixed X-Forwarded-For validation errors
+- **Download Progress**: Smooth real-time progress animation instead of jumping
+
+## Remaining Known Issues
 
 ### Performance Issues
-
-8. **Memory-Intensive Downloads**: Large files are fully loaded into memory as chunks before download, could cause browser memory issues for very large files (approaching 50MB limit)
-9. **No Download Resume**: If download is interrupted, there's no way to resume - must restart from beginning
+1. **Memory-Intensive Downloads**: Large files are fully loaded into memory as chunks before download
+2. **No Download Resume**: If download is interrupted, must restart from beginning
 
 ### Security Considerations
-
-10. **Password Visibility**: No "show password" toggle to verify typed password during file protection
-11. **No Password Confirmation**: When setting a password, users aren't asked to confirm/retype it
-12. **Client-Side Code Display**: Download codes are visible in URLs and could be intercepted
+3. **Client-Side Code Display**: Download codes are visible in URLs
 
 ### Missing Features
-
-13. **No Upload History**: Users can't see their previously uploaded files
-14. **No File Preview**: No ability to preview files (images, PDFs, etc.) before downloading
-15. **No QR Code**: Share codes could benefit from QR code generation for mobile sharing
-16. **No Email Notification**: No option to receive email when file is downloaded
-17. **No Copy Button for Share Code**: On the upload result page, users must manually select and copy the code
+4. **No Upload History**: Users can't see their previously uploaded files
+5. **No File Preview**: No ability to preview files before downloading
+6. **No QR Code**: Share codes could benefit from QR code generation
+7. **No Email Notification**: No option to receive email when file is downloaded
 
 ### Technical Debt
-
-18. **Mixed Styling Approaches**: Uses both inline styles and Tailwind classes inconsistently
-19. **Hardcoded Strings**: Many UI strings are hardcoded rather than using a localization system
-20. **Console Logs in Production**: Some debug console.log statements may remain in production code
+8. **Mixed Styling Approaches**: Uses both inline styles and Tailwind classes
+9. **Hardcoded Strings**: Many UI strings are hardcoded (no localization)

@@ -13,62 +13,87 @@
   }
 
   :root {
-    /* BLACK, BLUE, WHITE Theme */
-    --surface: #000000;
-    --panel: #0a1929;
-    --panel-light: #1a2942;
-    --border-highlight: #4a90e2;
-    --border-shadow: #00264d;
-    --border-dark: #001a33;
-    --text-primary: #ffffff;
-    --text-secondary: #b0c4de;
-    --accent: #4a90e2;
-    --accent-hover: #5ba3ff;
-    --header-bg: #001a33;
-    --header-border: #4a90e2;
-    --header-text: #ffffff;
-    --input-bg: #0d1b2a;
-    --terminal-bg: #000000;
-    --terminal-text: #00d4ff;
-    --terminal-glow: #00d4ff;
-    --link-color: #4a90e2;
-    --link-active: #5ba3ff;
+    /* BLACK, ORANGE, WHITE Theme - HSL format (H S% L%) */
+    --surface: 0 0% 0%;
+    --panel: 0 0% 10%;
+    --panel-light: 0 0% 16%;
+    --border-highlight: 33 100% 50%;
+    --border-shadow: 0 0% 24%;
+    --border-dark: 0 0% 10%;
+    --text-primary: 0 0% 100%;
+    --text-secondary: 0 0% 80%;
+    --accent: 33 100% 50%;
+    --accent-hover: 39 100% 50%;
+    --header-bg: 0 0% 10%;
+    --header-border: 33 100% 50%;
+    --header-text: 0 0% 100%;
+    --input-bg: 0 0% 5%;
+    --terminal-bg: 0 0% 0%;
+    --terminal-text: 33 100% 50%;
+    --terminal-glow: 33 100% 50%;
+    --link-color: 33 100% 50%;
+    --link-active: 39 100% 50%;
+    
+    /* Brand colors (third-party - fixed values) */
+    --brand-backblaze: 6 77% 55%;
+    --brand-backblaze-text: 0 0% 100%;
+    
+    /* Status colors for UI feedback */
+    --status-none-bg: 0 0% 85%;
+    --status-none-text: 0 0% 40%;
+    --status-none-border: 0 0% 60%;
+    --status-weak-bg: 0 70% 70%;
+    --status-weak-text: 0 100% 27%;
+    --status-weak-border: 0 100% 40%;
+    --status-medium-bg: 45 100% 62%;
+    --status-medium-text: 45 71% 31%;
+    --status-medium-border: 44 73% 46%;
+    --status-strong-bg: 133 55% 61%;
+    --status-strong-text: 133 73% 21%;
+    --status-strong-border: 132 75% 33%;
+    --status-verystrong-bg: 133 65% 56%;
+    --status-verystrong-text: 133 77% 17%;
+    --status-verystrong-border: 133 75% 28%;
+    
+    /* Animation overlay colors */
+    --overlay-scanline: 0 0% 0%;
+    --overlay-flicker: 0 0% 100%;
 
-    /* Shadcn semantic tokens mapped to BLACK/BLUE/WHITE palette */
-    --background: #000000;
-    --foreground: #ffffff;
-    --card: #0a1929;
-    --card-foreground: #ffffff;
-    --popover: #0a1929;
-    --popover-foreground: #ffffff;
-    --primary: #4a90e2;
-    --primary-foreground: #ffffff;
-    --secondary: #1a2942;
-    --secondary-foreground: #ffffff;
-    --muted: #1a2942;
-    --muted-foreground: #b0c4de;
-    --destructive: #4a90e2;
-    --destructive-foreground: #ffffff;
-    --border: #4a90e2;
-    --input: #0d1b2a;
-    --ring: #4a90e2;
+    /* Shadcn semantic tokens - HSL format (H S% L%) */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 33 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 16%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 80%;
+    --destructive: 0 73% 64%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 33 100% 50%;
+    --input: 0 0% 5%;
+    --ring: 33 100% 50%;
     --radius: 0;
   }
 
   body {
-    background-color: var(--surface);
+    background-color: hsl(var(--surface));
     font-family: 'Times New Roman', Times, serif;
-    color: var(--text-primary);
+    color: hsl(var(--text-primary));
   }
   
   a {
-    color: var(--link-color);
+    color: hsl(var(--link-color));
     text-decoration: underline;
     cursor: pointer;
   }
   
   a:active {
-    color: var(--link-active);
+    color: hsl(var(--link-active));
   }
   
   /* Simulate default browser styles from the 90s */
@@ -97,75 +122,69 @@
 
 @layer components {
   .retro-border {
-    border-top: 2px solid var(--border-highlight);
-    border-left: 2px solid var(--border-highlight);
-    border-right: 2px solid var(--border-shadow);
-    border-bottom: 2px solid var(--border-shadow);
-    background-color: var(--panel);
+    border-top: 2px solid hsl(var(--border-highlight));
+    border-left: 2px solid hsl(var(--border-highlight));
+    border-right: 2px solid hsl(var(--border-shadow));
+    border-bottom: 2px solid hsl(var(--border-shadow));
+    background-color: hsl(var(--panel));
   }
 
   .retro-border-inset {
-    border-top: 2px solid var(--border-shadow);
-    border-left: 2px solid var(--border-shadow);
-    border-right: 2px solid var(--border-highlight);
-    border-bottom: 2px solid var(--border-highlight);
-    background-color: var(--input-bg);
+    border-top: 2px solid hsl(var(--border-shadow));
+    border-left: 2px solid hsl(var(--border-shadow));
+    border-right: 2px solid hsl(var(--border-highlight));
+    border-bottom: 2px solid hsl(var(--border-highlight));
+    background-color: hsl(var(--input-bg));
   }
   
   .retro-button {
-    background-color: var(--panel);
-    border-top: 2px solid var(--border-highlight);
-    border-left: 2px solid var(--border-highlight);
-    border-right: 2px solid var(--border-dark);
-    border-bottom: 2px solid var(--border-dark);
-    box-shadow: 1px 1px 0px 0px var(--border-shadow);
+    background-color: hsl(var(--panel));
+    border-top: 2px solid hsl(var(--border-highlight));
+    border-left: 2px solid hsl(var(--border-highlight));
+    border-right: 2px solid hsl(var(--border-dark));
+    border-bottom: 2px solid hsl(var(--border-dark));
+    box-shadow: 1px 1px 0px 0px hsl(var(--border-shadow));
     padding: 4px 12px;
     font-family: 'MS Sans Serif', sans-serif;
     font-size: 13px;
     cursor: pointer;
-    color: var(--text-primary);
+    color: hsl(var(--text-primary));
   }
   
   .retro-button:active {
-    border-top: 2px solid var(--border-dark);
-    border-left: 2px solid var(--border-dark);
-    border-right: 2px solid var(--border-highlight);
-    border-bottom: 2px solid var(--border-highlight);
+    border-top: 2px solid hsl(var(--border-dark));
+    border-left: 2px solid hsl(var(--border-dark));
+    border-right: 2px solid hsl(var(--border-highlight));
+    border-bottom: 2px solid hsl(var(--border-highlight));
     box-shadow: none;
-    padding: 5px 11px 3px 13px; /* Shift text slightly */
+    padding: 5px 11px 3px 13px;
   }
 
   .retro-input {
-    border-top: 2px solid var(--border-shadow);
-    border-left: 2px solid var(--border-shadow);
-    border-right: 2px solid var(--border-highlight);
-    border-bottom: 2px solid var(--border-highlight);
-    background-color: var(--input-bg);
+    border-top: 2px solid hsl(var(--border-shadow));
+    border-left: 2px solid hsl(var(--border-shadow));
+    border-right: 2px solid hsl(var(--border-highlight));
+    border-bottom: 2px solid hsl(var(--border-highlight));
+    background-color: hsl(var(--input-bg));
     padding: 3px 4px;
     font-family: 'Courier New', monospace;
-    color: var(--text-primary);
+    color: hsl(var(--text-primary));
   }
   
   .retro-input::placeholder {
-    color: var(--text-secondary);
+    color: hsl(var(--text-secondary));
     opacity: 0.8;
   }
   
   input::placeholder,
   textarea::placeholder {
-    color: var(--text-secondary);
+    color: hsl(var(--text-secondary));
     opacity: 0.8;
   }
 
   /* Marquee Animation */
-  .marquee-container {
-    overflow: hidden;
-    white-space: nowrap;
-  }
-  
-  .marquee-content {
-    display: inline-block;
-    animation: marquee 15s linear infinite;
+  .animate-marquee {
+    animation: marquee 20s linear infinite;
   }
   
   @keyframes marquee {
@@ -217,16 +236,16 @@
   @keyframes glow {
     0%, 100% { 
       text-shadow: 
-        0 0 5px var(--terminal-glow), 
-        0 0 10px var(--terminal-glow),
-        0 0 15px var(--terminal-glow); 
+        0 0 5px hsl(var(--terminal-glow)), 
+        0 0 10px hsl(var(--terminal-glow)),
+        0 0 15px hsl(var(--terminal-glow)); 
     }
     50% { 
       text-shadow: 
-        0 0 10px var(--terminal-glow), 
-        0 0 20px var(--terminal-glow),
-        0 0 30px var(--terminal-glow),
-        0 0 40px var(--terminal-glow); 
+        0 0 10px hsl(var(--terminal-glow)), 
+        0 0 20px hsl(var(--terminal-glow)),
+        0 0 30px hsl(var(--terminal-glow)),
+        0 0 40px hsl(var(--terminal-glow)); 
     }
   }
 
@@ -242,32 +261,32 @@
   /* Custom Retro Terminal Scrollbar */
   .retro-terminal-scroll::-webkit-scrollbar {
     width: 12px;
-    background-color: var(--terminal-bg);
+    background-color: hsl(var(--terminal-bg));
   }
 
   .retro-terminal-scroll::-webkit-scrollbar-track {
-    background: var(--terminal-bg);
-    border-left: 1px solid var(--terminal-text);
+    background: hsl(var(--terminal-bg));
+    border-left: 1px solid hsl(var(--terminal-text));
   }
 
   .retro-terminal-scroll::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, var(--terminal-text) 0%, color-mix(in srgb, var(--terminal-text) 50%, black) 100%);
-    border: 1px solid var(--terminal-text);
-    box-shadow: inset 0 0 6px color-mix(in srgb, var(--terminal-text) 30%, transparent);
+    background: linear-gradient(180deg, hsl(var(--terminal-text)) 0%, hsl(var(--terminal-text) / 0.5) 100%);
+    border: 1px solid hsl(var(--terminal-text));
+    box-shadow: inset 0 0 6px hsl(var(--terminal-text) / 0.3);
   }
 
   .retro-terminal-scroll::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--terminal-text) 80%, white) 0%, var(--terminal-text) 100%);
-    box-shadow: inset 0 0 8px color-mix(in srgb, var(--terminal-text) 50%, transparent);
+    background: linear-gradient(180deg, hsl(var(--terminal-text) / 0.8) 0%, hsl(var(--terminal-text)) 100%);
+    box-shadow: inset 0 0 8px hsl(var(--terminal-text) / 0.5);
   }
 
   .retro-terminal-scroll::-webkit-scrollbar-corner {
-    background-color: var(--terminal-bg);
+    background-color: hsl(var(--terminal-bg));
   }
 
   /* Firefox scrollbar */
   .retro-terminal-scroll {
     scrollbar-width: thin;
-    scrollbar-color: var(--terminal-text) var(--terminal-bg);
+    scrollbar-color: hsl(var(--terminal-text)) hsl(var(--terminal-bg));
   }
 }
