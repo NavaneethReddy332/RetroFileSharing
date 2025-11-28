@@ -1,5 +1,5 @@
 import { useLocation, useRoute } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { RetroLayout } from "../components/RetroLayout";
 import { useTerminal } from "../context/TerminalContext";
 import { useQuery } from "@tanstack/react-query";
@@ -126,6 +126,22 @@ export default function Download() {
     }
   };
 
+  const animationFrameRef = useRef<number | null>(null);
+  const spinnerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const displayedPercentRef = useRef<number>(0);
+  const targetPercentRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (spinnerIntervalRef.current) {
+        clearInterval(spinnerIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleDownload = async () => {
     if (!fileInfo || !code) return;
 
@@ -140,7 +156,52 @@ export default function Download() {
 
     setIsDownloading(true);
     addLog(`INITIATING_DOWNLOAD`);
-    addLog(`DOWNLOADING  0%  [----------]`);
+    addLog(`CONNECTING  [..........] [    ]`);
+
+    const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
+    let spinnerIndex = 0;
+    let isConnecting = true;
+    let downloadComplete = false;
+
+    displayedPercentRef.current = 0;
+    targetPercentRef.current = 0;
+
+    spinnerIntervalRef.current = setInterval(() => {
+      spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
+      
+      if (downloadComplete) {
+        return;
+      }
+      
+      if (isConnecting) {
+        updateLastLog(`CONNECTING  [..........] ${spinnerFrames[spinnerIndex]}`);
+      } else {
+        const displayPercent = Math.floor(displayedPercentRef.current);
+        const filled = Math.floor(displayPercent / 10);
+        const empty = 10 - filled;
+        const progressBar = '#'.repeat(filled) + '-'.repeat(empty);
+        updateLastLog(`DOWNLOADING  ${displayPercent}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
+      }
+    }, 80);
+
+    const animateProgress = () => {
+      if (downloadComplete) {
+        return;
+      }
+
+      const target = targetPercentRef.current;
+      const current = displayedPercentRef.current;
+      
+      if (current < target) {
+        const diff = target - current;
+        const step = Math.max(0.5, diff * 0.15);
+        displayedPercentRef.current = Math.min(target, current + step);
+      }
+      
+      animationFrameRef.current = requestAnimationFrame(animateProgress);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animateProgress);
 
     try {
       const response = await fetch(`/api/download/${code}`, {
@@ -162,15 +223,14 @@ export default function Download() {
         throw new Error("No response body");
       }
 
+      isConnecting = false;
+      
       const reader = response.body.getReader();
       const contentLength = response.headers.get('Content-Length');
       const total = contentLength ? parseInt(contentLength, 10) : 0;
       
       let receivedLength = 0;
       const chunks: Uint8Array[] = [];
-      let lastDisplayedPercent = -1;
-      const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
-      let spinnerIndex = 0;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -181,21 +241,25 @@ export default function Download() {
         receivedLength += value.length;
         
         if (total > 0) {
-          const percent = Math.round((receivedLength / total) * 100);
-          spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
-          
-          if (percent !== lastDisplayedPercent) {
-            lastDisplayedPercent = percent;
-            const filled = Math.floor(percent / 10);
-            const empty = 10 - filled;
-            const progressBar = '#'.repeat(filled) + '-'.repeat(empty);
-            updateLastLog(`DOWNLOADING  ${percent}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
-          }
+          const actualPercent = Math.round((receivedLength / total) * 100);
+          targetPercentRef.current = actualPercent;
         } else {
-          spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
-          const receivedMB = (receivedLength / (1024 * 1024)).toFixed(2);
-          updateLastLog(`DOWNLOADING  ${receivedMB}MB ${spinnerFrames[spinnerIndex]}`);
+          const receivedMB = receivedLength / (1024 * 1024);
+          targetPercentRef.current = Math.min(99, receivedMB * 10);
         }
+      }
+
+      downloadComplete = true;
+      targetPercentRef.current = 100;
+      displayedPercentRef.current = 100;
+
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      if (spinnerIntervalRef.current) {
+        clearInterval(spinnerIntervalRef.current);
+        spinnerIntervalRef.current = null;
       }
 
       updateLastLog(`DOWNLOADING  100%  [##########] DONE`);
@@ -216,6 +280,17 @@ export default function Download() {
         description: "Your file has been downloaded successfully.",
       });
     } catch (error) {
+      downloadComplete = true;
+      
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      if (spinnerIntervalRef.current) {
+        clearInterval(spinnerIntervalRef.current);
+        spinnerIntervalRef.current = null;
+      }
+
       addLog(
         `ERROR: ${error instanceof Error ? error.message : "Download failed"}`,
         "error"

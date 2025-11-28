@@ -186,3 +186,40 @@ Preferred communication style: Simple, everyday language.
 - Custom video assets stored in `/attached_assets/generated_videos/`
 - Static assets served from `client/public/`
 - Path aliases configured: @/ for client source, @shared for shared code, @assets for attached assets
+
+## Known Issues & Flaws (November 28, 2025)
+
+### UI/UX Issues
+
+1. **External Image Dependencies**: Uses external URLs for icons (win98icons.alexmeub.com) which may break if the external service goes down
+2. **Marquee Text Truncation**: The welcome marquee text in the header gets cut off on smaller screens
+3. **Non-Responsive Table Layout**: File info display uses HTML tables which don't adapt well to mobile screens
+4. **Outdated Joke Content**: Homepage says "Fast 56k modem optimization" and "Works in Netscape & IE" which may confuse modern users who don't get the retro joke
+5. **Form Accessibility**: Password inputs lack proper ARIA labels for screen readers
+6. **No Drag-and-Drop**: File selection requires clicking the input button; no drag-and-drop zone for convenience
+7. **Limited File Type Feedback**: When a file is blocked (e.g., .exe), error messaging could be more helpful about what types ARE allowed
+
+### Performance Issues
+
+8. **Memory-Intensive Downloads**: Large files are fully loaded into memory as chunks before download, could cause browser memory issues for very large files (approaching 50MB limit)
+9. **No Download Resume**: If download is interrupted, there's no way to resume - must restart from beginning
+
+### Security Considerations
+
+10. **Password Visibility**: No "show password" toggle to verify typed password during file protection
+11. **No Password Confirmation**: When setting a password, users aren't asked to confirm/retype it
+12. **Client-Side Code Display**: Download codes are visible in URLs and could be intercepted
+
+### Missing Features
+
+13. **No Upload History**: Users can't see their previously uploaded files
+14. **No File Preview**: No ability to preview files (images, PDFs, etc.) before downloading
+15. **No QR Code**: Share codes could benefit from QR code generation for mobile sharing
+16. **No Email Notification**: No option to receive email when file is downloaded
+17. **No Copy Button for Share Code**: On the upload result page, users must manually select and copy the code
+
+### Technical Debt
+
+18. **Mixed Styling Approaches**: Uses both inline styles and Tailwind classes inconsistently
+19. **Hardcoded Strings**: Many UI strings are hardcoded rather than using a localization system
+20. **Console Logs in Production**: Some debug console.log statements may remain in production code
