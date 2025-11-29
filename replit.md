@@ -50,11 +50,11 @@ Preferred communication style: Simple, everyday language.
 - archiver package for creating ZIP archives from multiple files
 
 **Data Layer**
-- **Turso database** (LibSQL/SQLite) for persistent data storage
-- Drizzle ORM configured for Turso with SQLite-compatible schema definitions
+- **PostgreSQL database** (Replit-managed) for persistent data storage
+- Drizzle ORM configured for PostgreSQL with node-postgres driver
 - Automatic file cleanup mechanism using setInterval to remove expired files
 - Schema includes Users, Files, and GuestbookEntries tables
-- Timestamps stored in milliseconds using `timestamp_ms` mode for proper Date handling
+- Timestamps stored using PostgreSQL's native timestamp type
 
 **Request/Response Handling**
 - JSON body parsing with raw body preservation for webhook verification scenarios
@@ -128,18 +128,18 @@ Preferred communication style: Simple, everyday language.
 - All routes fall through to index.html for SPA routing
 
 **Database Operations**
-- `npm run db:push` - Pushes schema changes to Turso using Drizzle Kit
+- `npm run db:push` - Pushes schema changes to PostgreSQL using Drizzle Kit
 - Migration files stored in `/migrations` directory
-- Configured for Turso (LibSQL) database
+- Configured for PostgreSQL database (Replit-managed)
 
 ## External Dependencies
 
 ### Third-Party Services
 
 **Database**
-- Turso (LibSQL) - Edge SQLite database with global replication
-- @libsql/client for database connectivity
-- Configured via TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets
+- PostgreSQL - Replit-managed database with automatic backups
+- pg (node-postgres) for database connectivity
+- Configured via DATABASE_URL environment variable (automatically set by Replit)
 
 **Cloud Storage**
 - Backblaze B2 (backblaze-b2) - Cloud object storage for file uploads
@@ -158,7 +158,8 @@ Preferred communication style: Simple, everyday language.
 **Core Framework**
 - react, react-dom - UI library
 - express - Web server framework
-- drizzle-orm - Type-safe ORM for Turso/SQLite
+- drizzle-orm - Type-safe ORM for PostgreSQL
+- pg (node-postgres) - PostgreSQL client
 - vite - Build tool and dev server
 
 **File Handling**
@@ -196,7 +197,19 @@ Preferred communication style: Simple, everyday language.
 - Static assets served from `client/public/`
 - Path aliases configured: @/ for client source, @shared for shared code, @assets for attached assets
 
-## Recent Updates (November 28, 2025)
+## Recent Updates
+
+### Database Migration (November 29, 2025)
+- **Migrated from Turso to PostgreSQL**: Replaced Turso (LibSQL) with Replit-managed PostgreSQL database
+- Updated Drizzle ORM configuration to use `drizzle-orm/node-postgres` instead of `drizzle-orm/libsql`
+- Changed database schema from SQLite to PostgreSQL format:
+  - Replaced `sqliteTable` with `pgTable`
+  - Updated timestamp fields from `timestamp_ms` mode to PostgreSQL native `timestamp`
+  - Updated ID generation from crypto.randomUUID() to PostgreSQL's `gen_random_uuid()`
+- Updated database client from `@libsql/client` to `pg` (node-postgres)
+- All environment variables now use Replit's managed `DATABASE_URL` instead of `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
+
+### November 28, 2025
 
 ### Theme Update (Final)
 - Changed from Blue theme to **Black, Orange, White** color scheme
