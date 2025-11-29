@@ -39,13 +39,15 @@ Preferred communication style: Simple, everyday language.
 - Development mode integrates Vite middleware for hot module replacement
 
 **File Upload & Storage**
-- Multer middleware for handling multipart/form-data file uploads
+- Busboy middleware for handling multipart/form-data file uploads (supports multiple files)
+- **Multi-file upload**: When multiple files are selected, they are automatically compressed into a ZIP archive
 - **Backblaze B2 cloud storage** for production file storage (replaced local file system)
 - Backblaze service module (server/backblaze.ts) handles upload, download, and delete operations
 - Automatic token reauthorization with retry logic for long-lived processes
-- 50MB file size limit enforced at the middleware level
+- 1GB file size limit enforced at the middleware level
 - Random 6-digit code generation for file identification
 - Orphaned file prevention: B2 files deleted before database records
+- archiver package for creating ZIP archives from multiple files
 
 **Data Layer**
 - In-memory storage implementation (MemStorage) for development/testing
