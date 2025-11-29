@@ -2,13 +2,17 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { backblazeService, formatFileSize } from "./backblaze";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import bcrypt from "bcrypt";
 import { insertGuestbookEntrySchema } from "@shared/schema";
 import Busboy from "busboy";
 import { EventEmitter } from "events";
 import archiver from "archiver";
-import { PassThrough } from "stream";
+import { PassThrough, Readable, Transform } from "stream";
+import { createWriteStream, createReadStream, unlink, stat } from "fs";
+import { promisify } from "util";
+import { tmpdir } from "os";
+import { join } from "path";
 import { 
   passwordVerificationLimiter, 
   downloadLimiter, 
@@ -18,16 +22,66 @@ import {
 import { validateFile } from "./middleware/fileValidation";
 import { validateExpirationHours } from "./middleware/expirationValidator";
 
-interface FileInfo {
-  buffer: Buffer;
+const unlinkAsync = promisify(unlink);
+const statAsync = promisify(stat);
+
+interface TempFileInfo {
+  path: string;
   filename: string;
   mimeType: string;
+  size: number;
 }
 
 const uploadProgressEmitters = new Map<string, EventEmitter>();
+const pendingCodes = new Set<string>();
 
 function generateCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function generateUniqueCode(): Promise<string> {
+  let attempts = 0;
+  const maxAttempts = 100;
+  
+  while (attempts < maxAttempts) {
+    const code = generateCode();
+    
+    if (pendingCodes.has(code)) {
+      attempts++;
+      continue;
+    }
+    
+    pendingCodes.add(code);
+    
+    try {
+      const existingFile = await storage.getFileByCode(code);
+      if (!existingFile) {
+        return code;
+      }
+    } finally {
+      if (attempts >= maxAttempts - 1) {
+        pendingCodes.delete(code);
+      }
+    }
+    
+    pendingCodes.delete(code);
+    attempts++;
+  }
+  
+  throw new Error('Failed to generate unique code');
+}
+
+function releaseCode(code: string): void {
+  pendingCodes.delete(code);
+}
+
+async function cleanupTempFiles(files: TempFileInfo[]): Promise<void> {
+  for (const file of files) {
+    try {
+      await unlinkAsync(file.path);
+    } catch (err) {
+    }
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -69,9 +123,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     let uploadComplete = false;
+    let isAborted = false;
     const formFields: Record<string, string> = {};
-    const collectedFiles: FileInfo[] = [];
-    let fileProcessingPromise: Promise<void> | null = null;
+    const tempFiles: TempFileInfo[] = [];
+    const allTempPaths: string[] = [];
+    let code: string | null = null;
+    let totalBytesReceived = 0;
+    const fileWritePromises: Promise<void>[] = [];
+    
+    const cleanupAllTempFiles = async () => {
+      for (const path of allTempPaths) {
+        try {
+          await unlinkAsync(path);
+        } catch (err) {}
+      }
+    };
+    
+    req.on('aborted', async () => {
+      isAborted = true;
+      await cleanupAllTempFiles();
+      if (code) releaseCode(code);
+    });
+    
+    req.on('close', async () => {
+      if (!uploadComplete && !isAborted) {
+        await cleanupAllTempFiles();
+        if (code) releaseCode(code);
+      }
+    });
     
     busboy.on('field', (fieldname, value) => {
       formFields[fieldname] = value;
@@ -79,27 +158,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     busboy.on('file', async (fieldname, fileStream, info) => {
       const { filename, mimeType } = info;
+      const tempPath = join(tmpdir(), `upload-${Date.now()}-${randomBytes(8).toString('hex')}`);
+      allTempPaths.push(tempPath);
       
-      const chunks: Buffer[] = [];
-      for await (const chunk of fileStream) {
-        chunks.push(chunk);
-      }
-      const buffer = Buffer.concat(chunks);
+      const writeStream = createWriteStream(tempPath);
       
-      collectedFiles.push({
-        buffer,
-        filename,
-        mimeType: mimeType || 'application/octet-stream',
+      let fileSize = 0;
+      const totalSize = parseInt(formFields.totalSize || '0');
+      
+      const writePromise = new Promise<void>((resolve, reject) => {
+        const cleanup = async () => {
+          try {
+            writeStream.destroy();
+            await unlinkAsync(tempPath);
+          } catch (err) {}
+        };
+        
+        fileStream.on('data', (chunk: Buffer) => {
+          if (isAborted) return;
+          fileSize += chunk.length;
+          totalBytesReceived += chunk.length;
+          
+          if (totalSize > 0 && progressEmitter) {
+            const percent = Math.min(45, Math.floor((totalBytesReceived / totalSize) * 45));
+            progressEmitter.emit('progress', { type: 'progress', percent, stage: 'receiving' });
+          }
+        });
+        
+        fileStream.pipe(writeStream);
+        
+        writeStream.on('finish', () => {
+          if (isAborted) {
+            cleanup().then(() => reject(new Error('Upload aborted')));
+            return;
+          }
+          tempFiles.push({
+            path: tempPath,
+            filename,
+            mimeType: mimeType || 'application/octet-stream',
+            size: fileSize,
+          });
+          resolve();
+        });
+        
+        writeStream.on('error', async (err) => {
+          await cleanup();
+          reject(err);
+        });
+        
+        fileStream.on('error', async (err) => {
+          await cleanup();
+          reject(err);
+        });
       });
+      
+      fileWritePromises.push(writePromise);
     });
 
     busboy.on('finish', async () => {
+      if (isAborted) return;
+      
       try {
-        const fileCount = parseInt(formFields.fileCount || '1');
-        const totalSize = parseInt(formFields.totalSize || '0');
+        await Promise.all(fileWritePromises);
+        
         const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024;
         
-        if (collectedFiles.length === 0) {
+        if (tempFiles.length === 0) {
+          await cleanupAllTempFiles();
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'No files uploaded' });
           }
@@ -107,9 +232,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        for (const file of collectedFiles) {
-          const validation = validateFile(file.filename, file.mimeType, file.buffer.length);
+        for (const file of tempFiles) {
+          const validation = validateFile(file.filename, file.mimeType, file.size);
           if (!validation.valid) {
+            await cleanupAllTempFiles();
             if (progressEmitter) {
               progressEmitter.emit('progress', { type: 'error', error: validation.error });
             }
@@ -118,36 +244,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        let code = generateCode();
-        let existingFile = await storage.getFileByCode(code);
-        while (existingFile) {
-          code = generateCode();
-          existingFile = await storage.getFileByCode(code);
+        try {
+          code = await generateUniqueCode();
+        } catch (codeError) {
+          await cleanupAllTempFiles();
+          if (progressEmitter) {
+            progressEmitter.emit('progress', { type: 'error', error: 'Failed to generate unique code' });
+          }
+          res.status(500).json({ error: 'Failed to generate unique code' });
+          return;
         }
 
         const expiresInHours = validateExpirationHours(formFields.expiresIn);
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + expiresInHours);
 
-        let finalBuffer: Buffer;
+        let finalStream: NodeJS.ReadableStream;
         let finalFilename: string;
         let finalMimeType: string;
         let originalDisplayName: string;
+        let fileSize: number;
+        let tempZipPath: string | null = null;
         
-        if (collectedFiles.length > 1) {
-          console.log(`[UPLOAD] Creating ZIP archive for ${collectedFiles.length} files`);
+        if (tempFiles.length > 1) {
+          console.log(`[UPLOAD] Creating streaming ZIP archive for ${tempFiles.length} files`);
           
-          const { PassThrough } = await import('stream');
+          if (progressEmitter) {
+            progressEmitter.emit('progress', { type: 'progress', percent: 50, stage: 'compressing' });
+          }
           
-          const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
-            const archive = archiver('zip', { zlib: { level: 6 } });
-            const passThrough = new PassThrough();
-            const chunks: Buffer[] = [];
-            
-            passThrough.on('data', (chunk: Buffer) => chunks.push(chunk));
-            passThrough.on('end', () => resolve(Buffer.concat(chunks)));
-            passThrough.on('error', reject);
-            
+          tempZipPath = join(tmpdir(), `zip-${Date.now()}-${randomBytes(8).toString('hex')}.zip`);
+          allTempPaths.push(tempZipPath);
+          const zipWriteStream = createWriteStream(tempZipPath);
+          const archive = archiver('zip', { zlib: { level: 6 } });
+          
+          await new Promise<void>((resolve, reject) => {
             archive.on('error', reject);
             archive.on('warning', (err: any) => {
               if (err.code !== 'ENOENT') {
@@ -155,52 +286,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
             
-            archive.pipe(passThrough);
+            zipWriteStream.on('finish', resolve);
+            zipWriteStream.on('error', reject);
             
-            for (const file of collectedFiles) {
-              archive.append(file.buffer, { name: file.filename });
+            archive.pipe(zipWriteStream);
+            
+            for (const file of tempFiles) {
+              archive.append(createReadStream(file.path), { name: file.filename });
             }
             
             archive.finalize();
           });
           
-          finalBuffer = zipBuffer;
-          originalDisplayName = `archive-${collectedFiles.length}-files.zip`;
+          await cleanupTempFiles(tempFiles);
+          
+          const zipStats = await statAsync(tempZipPath);
+          fileSize = zipStats.size;
+          
+          originalDisplayName = `archive-${tempFiles.length}-files.zip`;
           finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${originalDisplayName}`;
           finalMimeType = 'application/zip';
+          finalStream = createReadStream(tempZipPath);
           
-          console.log(`[UPLOAD] ZIP created: ${formatFileSize(zipBuffer.length)}`);
+          console.log(`[UPLOAD] ZIP created: ${formatFileSize(fileSize)}`);
         } else {
-          const file = collectedFiles[0];
-          finalBuffer = file.buffer;
+          const file = tempFiles[0];
+          fileSize = file.size;
           originalDisplayName = file.filename;
           finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${file.filename}`;
           finalMimeType = file.mimeType;
+          finalStream = createReadStream(file.path);
         }
         
-        const fileSize = finalBuffer.length;
         console.log(`[UPLOAD] ${formatFileSize(fileSize)} | ${fileSize >= LARGE_FILE_THRESHOLD ? 'Large File API' : 'Standard'}`);
         
         let b2Upload;
         
-        if (fileSize >= LARGE_FILE_THRESHOLD) {
-          const { Readable } = await import('stream');
-          const bufferStream = Readable.from(finalBuffer);
-          b2Upload = await backblazeService.uploadLargeFile(
-            bufferStream,
-            finalFilename,
-            finalMimeType,
-            fileSize,
-            progressEmitter
-          );
-        } else {
-          b2Upload = await backblazeService.uploadFile(
-            finalBuffer,
-            finalFilename,
-            finalMimeType,
-            progressEmitter
-          );
+        try {
+          if (fileSize >= LARGE_FILE_THRESHOLD) {
+            b2Upload = await backblazeService.uploadLargeFile(
+              finalStream,
+              finalFilename,
+              finalMimeType,
+              fileSize,
+              progressEmitter
+            );
+          } else {
+            const chunks: Buffer[] = [];
+            for await (const chunk of finalStream) {
+              chunks.push(chunk as Buffer);
+            }
+            const buffer = Buffer.concat(chunks);
+            
+            b2Upload = await backblazeService.uploadFile(
+              buffer,
+              finalFilename,
+              finalMimeType,
+              progressEmitter
+            );
+          }
+        } catch (uploadError: any) {
+          console.error('[UPLOAD] B2 upload failed:', uploadError.message);
+          await cleanupAllTempFiles();
+          if (code) releaseCode(code);
+          if (progressEmitter) {
+            progressEmitter.emit('progress', { type: 'error', error: 'Failed to upload to storage' });
+          }
+          res.status(500).json({ error: 'Failed to upload to storage' });
+          return;
         }
+        
+        await cleanupAllTempFiles();
 
         console.log(`[UPLOAD] Complete: ${formatFileSize(b2Upload.uploadedBytes)}`);
 
@@ -214,33 +370,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isPasswordProtected = 1;
         }
 
-        const dbFile = await storage.createFile({
-          code,
-          filename: finalFilename,
-          originalName: originalDisplayName,
-          size: fileSize,
-          mimetype: finalMimeType,
-          expiresAt,
-          passwordHash,
-          isPasswordProtected,
-          maxDownloads: maxDownloads ? parseInt(maxDownloads) : null,
-          isOneTime: isOneTime === 'true' ? 1 : 0,
-          b2FileId: b2Upload.fileId,
-        });
+        try {
+          const dbFile = await storage.createFile({
+            code,
+            filename: finalFilename,
+            originalName: originalDisplayName,
+            size: fileSize,
+            mimetype: finalMimeType,
+            expiresAt,
+            passwordHash,
+            isPasswordProtected,
+            maxDownloads: maxDownloads ? parseInt(maxDownloads) : null,
+            isOneTime: isOneTime === 'true' ? 1 : 0,
+            b2FileId: b2Upload.fileId,
+          });
 
-        uploadComplete = true;
-        res.json({
-          code: dbFile.code,
-          originalName: dbFile.originalName,
-          size: dbFile.size,
-          expiresAt: dbFile.expiresAt,
-          isPasswordProtected: dbFile.isPasswordProtected,
-          maxDownloads: dbFile.maxDownloads,
-          isOneTime: dbFile.isOneTime,
-          fileCount: collectedFiles.length,
-        });
+          releaseCode(code);
+          uploadComplete = true;
+          
+          res.json({
+            code: dbFile.code,
+            originalName: dbFile.originalName,
+            size: dbFile.size,
+            expiresAt: dbFile.expiresAt,
+            isPasswordProtected: dbFile.isPasswordProtected,
+            maxDownloads: dbFile.maxDownloads,
+            isOneTime: dbFile.isOneTime,
+            fileCount: tempFiles.length > 0 ? tempFiles.length : 1,
+          });
+        } catch (dbError: any) {
+          console.error('[UPLOAD] Database error, cleaning up B2 file:', dbError.message);
+          releaseCode(code);
+          
+          try {
+            await backblazeService.deleteFile(finalFilename, b2Upload.fileId);
+            console.log('[UPLOAD] Orphaned B2 file cleaned up');
+          } catch (cleanupError) {
+            console.error('[UPLOAD] Failed to cleanup orphaned B2 file:', cleanupError);
+          }
+          
+          if (progressEmitter) {
+            progressEmitter.emit('progress', { type: 'error', error: 'Failed to save file metadata' });
+          }
+          res.status(500).json({ error: 'Failed to save file metadata' });
+        }
       } catch (error: any) {
-        if (!uploadComplete) {
+        await cleanupAllTempFiles();
+        if (code) releaseCode(code);
+        
+        if (!uploadComplete && !isAborted) {
           console.error(`[UPLOAD] Failed:`, error.message);
           
           const errorMessage = error.message || "Upload failed";
@@ -254,9 +432,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
-    busboy.on('error', (error: any) => {
+    busboy.on('error', async (error: any) => {
+      await cleanupAllTempFiles();
+      if (code) releaseCode(code);
       console.error('[UPLOAD] Busboy error:', error);
-      if (!uploadComplete) {
+      if (!uploadComplete && !isAborted) {
         res.status(500).json({ error: "Upload stream error" });
       }
     });
@@ -382,8 +562,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).send("<h1>404 - File Not Found</h1><p>This file may have expired or been deleted.</p>");
       }
 
-      // Redirect all direct download links to the download center page
-      // This prevents auto-downloading and lets users see file details first
       return res.redirect(302, `/download/${code}`);
     } catch (error) {
       console.error("Direct download redirect error:", error);
@@ -393,13 +571,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/download/:code", downloadLimiter, async (req, res) => {
     const startTime = Date.now();
+    let downloadCountIncremented = false;
+    let fileRef: any = null;
+    
     try {
       const { code } = req.params;
       const { password } = req.body;
-      
-      // Download started
+      const rangeHeader = req.headers.range;
       
       const file = await storage.getFileByCode(code);
+      fileRef = file;
 
       if (!file) {
         return res.status(404).json({ error: "File not found or expired" });
@@ -419,31 +600,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Download limit reached" });
       }
 
-      // Increment download count BEFORE streaming
-      await storage.incrementDownloadCount(file.id);
-      const currentDownloadCount = file.downloadCount + 1;
+      const currentDownloadCount = await storage.atomicIncrementDownloadCount(file.id);
+      downloadCountIncremented = true;
 
       console.log(`[DOWNLOAD] ${formatFileSize(file.size)}`);
+      
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : file.size - 1;
+          
+          if (start >= file.size || end >= file.size || start > end) {
+            res.status(416).json({ error: "Range not satisfiable" });
+            return;
+          }
+          
+          try {
+            const { stream: rangeStream, contentLength } = await backblazeService.downloadFileRange(
+              file.filename,
+              start,
+              end
+            );
+            
+            res.status(206);
+            res.setHeader("Content-Range", `bytes ${start}-${end}/${file.size}`);
+            res.setHeader("Accept-Ranges", "bytes");
+            res.setHeader("Content-Length", contentLength);
+            res.setHeader("Content-Type", file.mimetype);
+            res.setHeader("Content-Disposition", `attachment; filename="${file.originalName}"`);
+            res.setHeader("Cache-Control", "no-cache");
+            
+            rangeStream.pipe(res);
+            
+            rangeStream.on('end', () => {
+              const duration = Date.now() - startTime;
+              console.log(`[DOWNLOAD] Range complete: bytes ${start}-${end} in ${(duration / 1000).toFixed(1)}s`);
+            });
+            
+            rangeStream.on('error', async (error) => {
+              console.error(`[DOWNLOAD] Range stream error:`, error);
+              if (!res.headersSent) {
+                res.status(500).json({ error: "Download stream failed" });
+              }
+            });
+            
+            return;
+          } catch (rangeError) {
+            console.error(`[DOWNLOAD] Range download failed:`, rangeError);
+          }
+        }
+      }
       
       let fileStream;
       try {
         fileStream = await backblazeService.downloadFileStream(file.filename);
       } catch (streamError) {
         console.error(`[DOWNLOAD] Failed to get stream from Backblaze:`, streamError);
-        // Rollback download count if we can't get the stream
-        await storage.incrementDownloadCount(file.id, -1);
+        if (downloadCountIncremented) {
+          await storage.atomicIncrementDownloadCount(file.id, -1);
+        }
         return res.status(500).json({ error: "Failed to retrieve file from storage" });
       }
       
       res.setHeader("Content-Disposition", `attachment; filename="${file.originalName}"`);
       res.setHeader("Content-Type", file.mimetype);
       res.setHeader("Content-Length", file.size);
+      res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Cache-Control", "no-cache");
       
       let streamCompleted = false;
       let bytesTransferred = 0;
       
-      // Track actual bytes transferred
       fileStream.on('data', (chunk: Buffer) => {
         bytesTransferred += chunk.length;
       });
@@ -459,10 +687,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!res.headersSent) {
           res.status(500).json({ error: "Download stream failed" });
         }
-        // Rollback if stream failed before completion
-        if (!streamCompleted) {
+        if (!streamCompleted && downloadCountIncremented) {
           try {
-            await storage.incrementDownloadCount(file.id, -1);
+            await storage.atomicIncrementDownloadCount(file.id, -1);
             console.log(`[DOWNLOAD] Rolled back download count due to stream error`);
           } catch (rollbackError) {
             console.error(`[DOWNLOAD] Failed to rollback download count:`, rollbackError);
@@ -471,12 +698,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.destroy();
       });
 
-      // Handle client disconnect
       res.on('close', async () => {
-        if (!streamCompleted && res.writableEnded === false) {
+        if (!streamCompleted && res.writableEnded === false && downloadCountIncremented) {
           console.log(`[DOWNLOAD] Client disconnected before completion`);
           try {
-            await storage.incrementDownloadCount(file.id, -1);
+            await storage.atomicIncrementDownloadCount(file.id, -1);
             console.log(`[DOWNLOAD] Rolled back download count due to client disconnect`);
           } catch (rollbackError) {
             console.error(`[DOWNLOAD] Failed to rollback download count:`, rollbackError);
@@ -487,13 +713,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       fileStream.pipe(res);
 
       res.on('finish', async () => {
-        if (streamCompleted && (file.isOneTime || (file.maxDownloads && currentDownloadCount >= file.maxDownloads))) {
+        if (streamCompleted && fileRef && (fileRef.isOneTime || (fileRef.maxDownloads && currentDownloadCount >= fileRef.maxDownloads))) {
           try {
-            await storage.deleteFile(file.id);
-            if (file.b2FileId) {
-              await backblazeService.deleteFile(file.filename, file.b2FileId);
+            await storage.deleteFile(fileRef.id);
+            if (fileRef.b2FileId) {
+              await backblazeService.deleteFile(fileRef.filename, fileRef.b2FileId);
             }
-            console.log(`[DOWNLOAD] File deleted after download: ${file.originalName}`);
+            console.log(`[DOWNLOAD] File deleted after download: ${fileRef.originalName}`);
           } catch (deleteError) {
             console.error("File cleanup error:", deleteError);
           }
@@ -502,6 +728,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`[DOWNLOAD] Failed after ${duration}ms:`, error);
+      
+      if (downloadCountIncremented && fileRef) {
+        try {
+          await storage.atomicIncrementDownloadCount(fileRef.id, -1);
+        } catch (rollbackError) {
+          console.error(`[DOWNLOAD] Failed to rollback download count:`, rollbackError);
+        }
+      }
+      
       res.status(500).json({ error: "Download failed" });
     }
   });

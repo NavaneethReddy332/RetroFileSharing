@@ -1,6 +1,7 @@
 import B2 from 'backblaze-b2';
-import { Readable } from 'stream';
+import { Readable, PassThrough } from 'stream';
 import { EventEmitter } from 'events';
+import { createHash } from 'crypto';
 
 interface B2Config {
   applicationKeyId: string;
@@ -20,6 +21,7 @@ export interface UploadResult {
   fileId: string;
   fileName: string;
   uploadedBytes: number;
+  sha1?: string;
 }
 
 export function formatFileSize(bytes: number): string {
@@ -29,12 +31,48 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  retries: number = MAX_RETRIES,
+  delayMs: number = RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      
+      if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
+        throw error;
+      }
+      
+      if (attempt < retries) {
+        const backoffDelay = delayMs * Math.pow(2, attempt);
+        console.log(`[B2] Retry ${attempt + 1}/${retries} after ${backoffDelay}ms`);
+        await sleep(backoffDelay);
+      }
+    }
+  }
+  
+  throw lastError;
+}
+
 class BackblazeService {
   private b2: B2;
   private config: B2Config;
   private authorizationToken: string | null = null;
   private downloadUrl: string | null = null;
   private apiUrl: string | null = null;
+  private authExpiresAt: number = 0;
 
   constructor(config: B2Config) {
     this.config = config;
@@ -50,6 +88,7 @@ class BackblazeService {
       this.authorizationToken = response.data.authorizationToken;
       this.downloadUrl = response.data.downloadUrl;
       this.apiUrl = response.data.apiUrl;
+      this.authExpiresAt = Date.now() + 23 * 60 * 60 * 1000;
     } catch (error) {
       console.error('Backblaze authorization error:', error);
       throw new Error('Failed to authorize with Backblaze');
@@ -57,7 +96,7 @@ class BackblazeService {
   }
 
   async ensureAuthorized(): Promise<void> {
-    if (!this.authorizationToken) {
+    if (!this.authorizationToken || Date.now() >= this.authExpiresAt) {
       await this.authorize();
     }
   }
@@ -66,9 +105,9 @@ class BackblazeService {
     await this.ensureAuthorized();
 
     try {
-      const uploadUrlResponse = await this.b2.getUploadUrl({
-        bucketId: this.config.bucketId,
-      });
+      const uploadUrlResponse = await withRetry(() => 
+        this.b2.getUploadUrl({ bucketId: this.config.bucketId })
+      );
 
       return {
         uploadUrl: uploadUrlResponse.data.uploadUrl,
@@ -95,44 +134,39 @@ class BackblazeService {
     await this.ensureAuthorized();
 
     try {
-      const uploadUrlResponse = await this.b2.getUploadUrl({
-        bucketId: this.config.bucketId,
-      });
-
+      const sha1Hash = createHash('sha1').update(fileBuffer).digest('hex');
       const totalSize = fileBuffer.length;
-      const startTime = Date.now();
 
       if (progressEmitter) {
         progressEmitter.emit('progress', { type: 'progress', percent: 0 });
       }
 
-      const progressInterval = setInterval(() => {
-        const currentProgress = Math.min(95, (Date.now() - startTime) / 100);
-        if (progressEmitter) {
-          progressEmitter.emit('progress', { type: 'progress', percent: Math.floor(currentProgress) });
-        }
-      }, 200);
+      const uploadUrlResponse = await withRetry(() => 
+        this.b2.getUploadUrl({ bucketId: this.config.bucketId })
+      );
 
       const headers: Record<string, string> = {
         'Authorization': uploadUrlResponse.data.authorizationToken,
         'X-Bz-File-Name': encodeURIComponent(fileName),
         'Content-Type': contentType || 'application/octet-stream',
         'Content-Length': totalSize.toString(),
-        'X-Bz-Content-Sha1': 'do_not_verify',
+        'X-Bz-Content-Sha1': sha1Hash,
       };
 
-      const response = await fetch(uploadUrlResponse.data.uploadUrl, {
-        method: 'POST',
-        headers: headers,
-        body: fileBuffer,
+      const response = await withRetry(async () => {
+        const res = await fetch(uploadUrlResponse.data.uploadUrl, {
+          method: 'POST',
+          headers: headers,
+          body: fileBuffer,
+        });
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`B2 upload failed: ${res.status} ${errorText}`);
+        }
+        
+        return res;
       });
-
-      clearInterval(progressInterval);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`B2 upload failed: ${response.status} ${errorText}`);
-      }
 
       const result = await response.json();
 
@@ -145,6 +179,7 @@ class BackblazeService {
         fileId: result.fileId,
         fileName: result.fileName,
         uploadedBytes: totalSize,
+        sha1: sha1Hash,
       };
     } catch (error: any) {
       if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
@@ -157,96 +192,6 @@ class BackblazeService {
         progressEmitter.emit('progress', { type: 'error', error: 'Failed to upload file to Backblaze' });
       }
       throw new Error('Failed to upload file to Backblaze');
-    }
-  }
-
-  async uploadFileStream(
-    fileStream: NodeJS.ReadableStream,
-    fileName: string,
-    contentType: string,
-    fileSize: number,
-    progressEmitter?: EventEmitter
-  ): Promise<UploadResult> {
-    await this.ensureAuthorized();
-
-    try {
-      const uploadUrlResponse = await this.b2.getUploadUrl({
-        bucketId: this.config.bucketId,
-      });
-
-      const headers: Record<string, string> = {
-        'Authorization': uploadUrlResponse.data.authorizationToken,
-        'X-Bz-File-Name': encodeURIComponent(fileName),
-        'Content-Type': contentType || 'application/octet-stream',
-        'X-Bz-Content-Sha1': 'do_not_verify',
-      };
-
-      if (fileSize > 0) {
-        headers['Content-Length'] = fileSize.toString();
-      }
-
-      if (progressEmitter) {
-        progressEmitter.emit('progress', { type: 'progress', percent: 0 });
-      }
-
-      let uploadedBytes = 0;
-      const progressStream = new Readable({
-        read() {}
-      });
-
-      fileStream.on('data', (chunk: Buffer) => {
-        uploadedBytes += chunk.length;
-        if (progressEmitter && fileSize > 0) {
-          const percent = Math.min(95, Math.floor((uploadedBytes / fileSize) * 100));
-          progressEmitter.emit('progress', { type: 'progress', percent });
-        }
-        progressStream.push(chunk);
-      });
-
-      fileStream.on('end', () => {
-        progressStream.push(null);
-      });
-
-      fileStream.on('error', (error) => {
-        progressStream.destroy(error);
-      });
-
-      const response = await fetch(uploadUrlResponse.data.uploadUrl, {
-        method: 'POST',
-        headers: headers,
-        body: progressStream as unknown as BodyInit,
-        // @ts-ignore - duplex is required for streaming but not in TypeScript types
-        duplex: 'half',
-      } as RequestInit);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`B2 upload failed: ${response.status} ${errorText}`);
-      }
-
-      const result = await response.json();
-
-      if (progressEmitter) {
-        progressEmitter.emit('progress', { type: 'progress', percent: 100 });
-        progressEmitter.emit('progress', { type: 'complete' });
-      }
-      
-      return {
-        fileId: result.fileId,
-        fileName: result.fileName,
-        uploadedBytes: uploadedBytes,
-      };
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
-        this.authorizationToken = null;
-        await this.ensureAuthorized();
-        return this.uploadFileStream(fileStream, fileName, contentType, fileSize, progressEmitter);
-      }
-      console.error('Backblaze upload stream error:', error);
-      if (progressEmitter) {
-        progressEmitter.emit('progress', { type: 'error', error: 'Failed to upload file stream to Backblaze' });
-      }
-      throw new Error('Failed to upload file stream to Backblaze');
     }
   }
 
@@ -264,30 +209,29 @@ class BackblazeService {
         progressEmitter.emit('progress', { type: 'progress', percent: 0 });
       }
 
-      // Start large file upload
-      const startResponse = await this.b2.startLargeFile({
-        bucketId: this.config.bucketId,
-        fileName: fileName,
-        contentType: contentType || 'application/octet-stream',
-      });
+      const startResponse = await withRetry(() => 
+        this.b2.startLargeFile({
+          bucketId: this.config.bucketId,
+          fileName: fileName,
+          contentType: contentType || 'application/octet-stream',
+        })
+      );
 
       const fileId = startResponse.data.fileId;
-      const partSize = 5 * 1024 * 1024; // 5MB parts for faster uploads
-      const maxConcurrentUploads = 4; // Upload 4 parts in parallel
+      const partSize = 10 * 1024 * 1024;
+      const maxConcurrentUploads = 6;
       
       let currentPart: Buffer[] = [];
       let currentPartSize = 0;
       let totalRead = 0;
       let totalUploaded = 0;
       
-      // Queue for parts to upload
       const partsToUpload: { partNumber: number; buffer: Buffer }[] = [];
       const uploadedParts: { partNumber: number; sha1: string }[] = [];
       let nextPartNumber = 1;
 
       let uploadCancelled = false;
 
-      // Helper to cancel the upload session
       const cancelUpload = async () => {
         if (!uploadCancelled) {
           uploadCancelled = true;
@@ -299,42 +243,37 @@ class BackblazeService {
         }
       };
 
-      // Helper to upload a single part
       const uploadPart = async (partNumber: number, partBuffer: Buffer): Promise<{ partNumber: number; sha1: string }> => {
-        const uploadUrlResponse = await this.b2.getUploadPartUrl({
-          fileId: fileId,
+        return await withRetry(async () => {
+          const uploadUrlResponse = await this.b2.getUploadPartUrl({ fileId });
+          const sha1 = createHash('sha1').update(partBuffer).digest('hex');
+
+          const partResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': uploadUrlResponse.data.authorizationToken,
+              'X-Bz-Part-Number': partNumber.toString(),
+              'Content-Length': partBuffer.length.toString(),
+              'X-Bz-Content-Sha1': sha1,
+            },
+            body: partBuffer,
+          });
+
+          if (!partResponse.ok) {
+            const errorText = await partResponse.text();
+            throw new Error(`B2 part ${partNumber} upload failed: ${partResponse.status} ${errorText}`);
+          }
+
+          totalUploaded += partBuffer.length;
+          if (progressEmitter) {
+            const percent = Math.min(99, Math.floor((totalUploaded / fileSize) * 100));
+            progressEmitter.emit('progress', { type: 'progress', percent });
+          }
+
+          return { partNumber, sha1 };
         });
-
-        const crypto = await import('crypto');
-        const sha1 = crypto.createHash('sha1').update(partBuffer).digest('hex');
-
-        const partResponse = await fetch(uploadUrlResponse.data.uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': uploadUrlResponse.data.authorizationToken,
-            'X-Bz-Part-Number': partNumber.toString(),
-            'Content-Length': partBuffer.length.toString(),
-            'X-Bz-Content-Sha1': sha1,
-          },
-          body: partBuffer,
-        });
-
-        if (!partResponse.ok) {
-          const errorText = await partResponse.text();
-          await cancelUpload();
-          throw new Error(`B2 part ${partNumber} upload failed: ${partResponse.status} ${errorText}`);
-        }
-
-        totalUploaded += partBuffer.length;
-        if (progressEmitter) {
-          const percent = Math.min(95, Math.floor((totalUploaded / fileSize) * 100));
-          progressEmitter.emit('progress', { type: 'progress', percent });
-        }
-
-        return { partNumber, sha1 };
       };
 
-      // Upload parts in parallel batches
       const uploadBatch = async (parts: { partNumber: number; buffer: Buffer }[]): Promise<void> => {
         try {
           const results = await Promise.all(
@@ -347,13 +286,11 @@ class BackblazeService {
         }
       };
 
-      // Collect data into parts
       for await (const chunk of fileStream as any) {
         currentPart.push(chunk);
         currentPartSize += chunk.length;
         totalRead += chunk.length;
 
-        // When we have a full part, queue it
         if (currentPartSize >= partSize) {
           const partBuffer = Buffer.concat(currentPart);
           partsToUpload.push({ partNumber: nextPartNumber, buffer: partBuffer });
@@ -361,7 +298,6 @@ class BackblazeService {
           currentPart = [];
           currentPartSize = 0;
 
-          // Upload in batches when we have enough parts queued
           if (partsToUpload.length >= maxConcurrentUploads) {
             const batch = partsToUpload.splice(0, maxConcurrentUploads);
             await uploadBatch(batch);
@@ -369,27 +305,25 @@ class BackblazeService {
         }
       }
 
-      // Add remaining data as final part
       if (currentPart.length > 0) {
         const partBuffer = Buffer.concat(currentPart);
         partsToUpload.push({ partNumber: nextPartNumber, buffer: partBuffer });
       }
 
-      // Upload any remaining parts
       while (partsToUpload.length > 0) {
         const batch = partsToUpload.splice(0, maxConcurrentUploads);
         await uploadBatch(batch);
       }
 
-      // Sort parts by part number and extract sha1 array
       uploadedParts.sort((a, b) => a.partNumber - b.partNumber);
       const sha1Array = uploadedParts.map(p => p.sha1);
 
-      // Finish the large file upload
-      const finishResponse = await this.b2.finishLargeFile({
-        fileId: fileId,
-        partSha1Array: sha1Array,
-      });
+      const finishResponse = await withRetry(() => 
+        this.b2.finishLargeFile({
+          fileId: fileId,
+          partSha1Array: sha1Array,
+        })
+      );
 
       if (progressEmitter) {
         progressEmitter.emit('progress', { type: 'progress', percent: 100 });
@@ -414,10 +348,12 @@ class BackblazeService {
     await this.ensureAuthorized();
 
     try {
-      const response = await this.b2.downloadFileByName({
-        bucketName: this.config.bucketName,
-        fileName: fileName,
-      });
+      const response = await withRetry(() => 
+        this.b2.downloadFileByName({
+          bucketName: this.config.bucketName,
+          fileName: fileName,
+        })
+      );
 
       return Buffer.from(response.data as ArrayBuffer);
     } catch (error: any) {
@@ -435,11 +371,13 @@ class BackblazeService {
     await this.ensureAuthorized();
 
     try {
-      const response = await this.b2.downloadFileByName({
-        bucketName: this.config.bucketName,
-        fileName: fileName,
-        responseType: 'stream',
-      });
+      const response = await withRetry(() => 
+        this.b2.downloadFileByName({
+          bucketName: this.config.bucketName,
+          fileName: fileName,
+          responseType: 'stream',
+        })
+      );
 
       return response.data as any;
     } catch (error: any) {
@@ -453,14 +391,77 @@ class BackblazeService {
     }
   }
 
+  async downloadFileRange(fileName: string, start: number, end: number): Promise<{ stream: NodeJS.ReadableStream; contentLength: number }> {
+    await this.ensureAuthorized();
+
+    if (!this.downloadUrl) {
+      throw new Error('Not authorized with Backblaze');
+    }
+
+    const url = `${this.downloadUrl}/file/${this.config.bucketName}/${encodeURIComponent(fileName)}`;
+    
+    try {
+      const response = await withRetry(async () => {
+        const res = await fetch(url, {
+          headers: {
+            'Authorization': this.authorizationToken!,
+            'Range': `bytes=${start}-${end}`,
+          },
+        });
+        
+        if (!res.ok && res.status !== 206) {
+          throw new Error(`B2 range download failed: ${res.status}`);
+        }
+        
+        return res;
+      });
+
+      const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+      
+      const nodeStream = new PassThrough();
+      const reader = response.body?.getReader();
+      
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      (async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              nodeStream.end();
+              break;
+            }
+            nodeStream.write(Buffer.from(value));
+          }
+        } catch (error) {
+          nodeStream.destroy(error as Error);
+        }
+      })();
+
+      return { stream: nodeStream, contentLength };
+    } catch (error: any) {
+      if (error?.message?.includes('401') || error?.message?.includes('unauthorized')) {
+        this.authorizationToken = null;
+        await this.ensureAuthorized();
+        return this.downloadFileRange(fileName, start, end);
+      }
+      console.error('Backblaze range download error:', error);
+      throw new Error('Failed to download file range from Backblaze');
+    }
+  }
+
   async deleteFile(fileName: string, fileId: string): Promise<void> {
     await this.ensureAuthorized();
 
     try {
-      await this.b2.deleteFileVersion({
-        fileId: fileId,
-        fileName: fileName,
-      });
+      await withRetry(() => 
+        this.b2.deleteFileVersion({
+          fileId: fileId,
+          fileName: fileName,
+        })
+      );
     } catch (error: any) {
       if (error?.response?.status === 401 || error?.message?.includes('unauthorized')) {
         this.authorizationToken = null;
@@ -476,9 +477,9 @@ class BackblazeService {
     await this.ensureAuthorized();
 
     try {
-      const response = await this.b2.getFileInfo({
-        fileId: fileId,
-      });
+      const response = await withRetry(() => 
+        this.b2.getFileInfo({ fileId })
+      );
       return response.data;
     } catch (error) {
       console.error('Backblaze file info error:', error);
@@ -501,23 +502,27 @@ class BackblazeService {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/b2api/v2/b2_get_download_authorization`, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.authorizationToken!,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bucketId: this.config.bucketId,
-          fileNamePrefix: fileName,
-          validDurationInSeconds: validDurationInSeconds,
-        }),
+      const response = await withRetry(async () => {
+        const res = await fetch(`${this.apiUrl}/b2api/v2/b2_get_download_authorization`, {
+          method: 'POST',
+          headers: {
+            'Authorization': this.authorizationToken!,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            bucketId: this.config.bucketId,
+            fileNamePrefix: fileName,
+            validDurationInSeconds: validDurationInSeconds,
+          }),
+        });
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`B2 download authorization failed: ${errorText}`);
+        }
+        
+        return res;
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`B2 download authorization failed: ${errorText}`);
-      }
 
       const data = await response.json();
       return data.authorizationToken;
