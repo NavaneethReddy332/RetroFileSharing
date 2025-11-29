@@ -124,6 +124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     let uploadComplete = false;
     let isAborted = false;
+    let b2UploadInProgress = false;
     const formFields: Record<string, string> = {};
     const tempFiles: TempFileInfo[] = [];
     const allTempPaths: string[] = [];
@@ -141,12 +142,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     req.on('aborted', async () => {
       isAborted = true;
-      await cleanupAllTempFiles();
+      if (!b2UploadInProgress) {
+        await cleanupAllTempFiles();
+      }
       if (code) releaseCode(code);
     });
     
     req.on('close', async () => {
-      if (!uploadComplete && !isAborted) {
+      if (!uploadComplete && !isAborted && !b2UploadInProgress) {
         await cleanupAllTempFiles();
         if (code) releaseCode(code);
       }
@@ -322,6 +325,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         let b2Upload;
         
+        b2UploadInProgress = true;
+        
         try {
           if (fileSize >= LARGE_FILE_THRESHOLD) {
             b2Upload = await backblazeService.uploadLargeFile(
@@ -346,6 +351,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             );
           }
         } catch (uploadError: any) {
+          b2UploadInProgress = false;
           console.error('[UPLOAD] B2 upload failed:', uploadError.message);
           await cleanupAllTempFiles();
           if (code) releaseCode(code);
@@ -356,6 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
+        b2UploadInProgress = false;
         await cleanupAllTempFiles();
 
         console.log(`[UPLOAD] Complete: ${formatFileSize(b2Upload.uploadedBytes)}`);
