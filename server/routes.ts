@@ -221,12 +221,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     busboy.on('finish', async () => {
       if (isAborted) return;
       
+      b2UploadInProgress = true;
+      
       try {
         await Promise.all(fileWritePromises);
         
         const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024;
         
         if (tempFiles.length === 0) {
+          b2UploadInProgress = false;
           await cleanupAllTempFiles();
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'No files uploaded' });
@@ -238,6 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const file of tempFiles) {
           const validation = validateFile(file.filename, file.mimeType, file.size);
           if (!validation.valid) {
+            b2UploadInProgress = false;
             await cleanupAllTempFiles();
             if (progressEmitter) {
               progressEmitter.emit('progress', { type: 'error', error: validation.error });
@@ -250,6 +254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           code = await generateUniqueCode();
         } catch (codeError) {
+          b2UploadInProgress = false;
           await cleanupAllTempFiles();
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'Failed to generate unique code' });
@@ -324,8 +329,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[UPLOAD] ${formatFileSize(fileSize)} | ${fileSize >= LARGE_FILE_THRESHOLD ? 'Large File API' : 'Standard'}`);
         
         let b2Upload;
-        
-        b2UploadInProgress = true;
         
         try {
           if (fileSize >= LARGE_FILE_THRESHOLD) {
