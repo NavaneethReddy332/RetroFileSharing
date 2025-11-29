@@ -96,10 +96,15 @@ Preferred communication style: Simple, everyday language.
 - **Expiration Validation**: Server-side whitelisting of expiration times prevents indefinite file retention
 - **Error Handling**: Proper rollback on failed downloads to prevent download count corruption
 
-**Performance Optimizations (November 28, 2025)**
-- **Parallel Upload**: Large files now use 5MB chunks with 4 concurrent uploads for faster speeds
-- **Real-time Download Progress**: Terminal shows animated progress bar with percentage during downloads
-- **Improved Progress Tracking**: Upload and download progress updates on every percentage change
+**Performance Optimizations (November 28-29, 2025)**
+- **Memory-Safe Streaming**: Files now stream to temp files instead of memory, preventing OOM on large uploads
+- **Parallel Upload**: Large files use 10MB chunks with 6 concurrent uploads for faster speeds
+- **SHA-1 Verification**: File integrity verified on upload to prevent corruption
+- **Retry Logic**: All B2 operations have exponential backoff retry for reliability
+- **Range Downloads**: HTTP Range header support for resumable downloads
+- **Atomic Counters**: Download counts use atomic operations to prevent race conditions
+- **Orphan Cleanup**: B2 files cleaned up if database insert fails; temp files cleaned on all error paths
+- **Real-time Progress**: Accurate upload/download progress tracking
 
 **Validation**
 - Zod schemas generated from Drizzle ORM schemas for runtime type validation
@@ -218,8 +223,7 @@ Preferred communication style: Simple, everyday language.
 ## Remaining Known Issues
 
 ### Performance Issues
-1. **Memory-Intensive Downloads**: Large files are fully loaded into memory as chunks before download
-2. **No Download Resume**: If download is interrupted, must restart from beginning
+1. **No Download Resume**: If download is interrupted, must restart from beginning (Range headers supported but not client-side resume)
 
 ### Security Considerations
 3. **Client-Side Code Display**: Download codes are visible in URLs
