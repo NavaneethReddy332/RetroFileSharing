@@ -7,6 +7,8 @@ import bcrypt from "bcrypt";
 import { insertGuestbookEntrySchema } from "@shared/schema";
 import Busboy from "busboy";
 import { EventEmitter } from "events";
+import archiver from "archiver";
+import { PassThrough } from "stream";
 import { 
   passwordVerificationLimiter, 
   downloadLimiter, 
@@ -15,6 +17,12 @@ import {
 } from "./middleware/rateLimiter";
 import { validateFile } from "./middleware/fileValidation";
 import { validateExpirationHours } from "./middleware/expirationValidator";
+
+interface FileInfo {
+  buffer: Buffer;
+  filename: string;
+  mimeType: string;
+}
 
 const uploadProgressEmitters = new Map<string, EventEmitter>();
 
@@ -62,115 +70,127 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     let uploadComplete = false;
     const formFields: Record<string, string> = {};
+    const collectedFiles: FileInfo[] = [];
+    let fileProcessingPromise: Promise<void> | null = null;
     
     busboy.on('field', (fieldname, value) => {
       formFields[fieldname] = value;
     });
     
     busboy.on('file', async (fieldname, fileStream, info) => {
+      const { filename, mimeType } = info;
+      
+      const chunks: Buffer[] = [];
+      for await (const chunk of fileStream) {
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      
+      collectedFiles.push({
+        buffer,
+        filename,
+        mimeType: mimeType || 'application/octet-stream',
+      });
+    });
+
+    busboy.on('finish', async () => {
       try {
-        const { filename, encoding, mimeType } = info;
+        const fileCount = parseInt(formFields.fileCount || '1');
+        const totalSize = parseInt(formFields.totalSize || '0');
+        const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024;
         
-        // Get file size from form fields (sent by client)
-        const fileSize = parseInt(formFields.fileSize || '0');
-        const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
-        
-        if (!fileSize || fileSize <= 0) {
+        if (collectedFiles.length === 0) {
           if (progressEmitter) {
-            progressEmitter.emit('progress', { 
-              type: 'error', 
-              error: 'Invalid file size' 
-            });
+            progressEmitter.emit('progress', { type: 'error', error: 'No files uploaded' });
           }
-          fileStream.resume();
-          res.status(400).json({ error: 'File size must be provided' });
+          res.status(400).json({ error: 'No files uploaded' });
           return;
         }
         
-        // Validate file before processing
-        const validation = validateFile(filename, mimeType || 'application/octet-stream', fileSize);
-        
-        if (!validation.valid) {
-          if (progressEmitter) {
-            progressEmitter.emit('progress', { 
-              type: 'error', 
-              error: validation.error 
-            });
+        for (const file of collectedFiles) {
+          const validation = validateFile(file.filename, file.mimeType, file.buffer.length);
+          if (!validation.valid) {
+            if (progressEmitter) {
+              progressEmitter.emit('progress', { type: 'error', error: validation.error });
+            }
+            res.status(400).json({ error: validation.error });
+            return;
           }
-          fileStream.resume(); // Drain the stream
-          res.status(400).json({ error: validation.error });
-          return;
         }
         
         let code = generateCode();
         let existingFile = await storage.getFileByCode(code);
-        
         while (existingFile) {
           code = generateCode();
           existingFile = await storage.getFileByCode(code);
         }
 
-        // Validate and sanitize expiration time (whitelist only allowed values)
         const expiresInHours = validateExpirationHours(formFields.expiresIn);
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + expiresInHours);
 
-        const uniqueFileName = `${Date.now()}-${randomBytes(8).toString('hex')}-${filename}`;
+        let finalBuffer: Buffer;
+        let finalFilename: string;
+        let finalMimeType: string;
+        let originalDisplayName: string;
         
+        if (collectedFiles.length > 1) {
+          console.log(`[UPLOAD] Creating ZIP archive for ${collectedFiles.length} files`);
+          
+          const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
+            const archive = archiver('zip', { zlib: { level: 6 } });
+            const chunks: Buffer[] = [];
+            
+            archive.on('data', (chunk: Buffer) => chunks.push(chunk));
+            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            archive.on('error', reject);
+            
+            for (const file of collectedFiles) {
+              archive.append(file.buffer, { name: file.filename });
+            }
+            
+            archive.finalize();
+          });
+          
+          finalBuffer = zipBuffer;
+          originalDisplayName = `archive-${collectedFiles.length}-files.zip`;
+          finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${originalDisplayName}`;
+          finalMimeType = 'application/zip';
+          
+          console.log(`[UPLOAD] ZIP created: ${formatFileSize(zipBuffer.length)}`);
+        } else {
+          const file = collectedFiles[0];
+          finalBuffer = file.buffer;
+          originalDisplayName = file.filename;
+          finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${file.filename}`;
+          finalMimeType = file.mimeType;
+        }
+        
+        const fileSize = finalBuffer.length;
         console.log(`[UPLOAD] ${formatFileSize(fileSize)} | ${fileSize >= LARGE_FILE_THRESHOLD ? 'Large File API' : 'Standard'}`);
-        
-        // Set up limit handler
-        let fileTruncated = false;
-        fileStream.on('limit', () => {
-          fileTruncated = true;
-          console.error(`[UPLOAD] File size limit exceeded: ${filename}`);
-          if (progressEmitter) {
-            progressEmitter.emit('progress', { type: 'error', error: 'File size exceeds 1GB limit' });
-          }
-        });
         
         let b2Upload;
         
         if (fileSize >= LARGE_FILE_THRESHOLD) {
-          // Use large file API for files >= 100MB
+          const { Readable } = await import('stream');
+          const bufferStream = Readable.from(finalBuffer);
           b2Upload = await backblazeService.uploadLargeFile(
-            fileStream,
-            uniqueFileName,
-            mimeType || 'application/octet-stream',
+            bufferStream,
+            finalFilename,
+            finalMimeType,
             fileSize,
             progressEmitter
           );
         } else {
-          // Use stream upload for files < 100MB
-          b2Upload = await backblazeService.uploadFileStream(
-            fileStream,
-            uniqueFileName,
-            mimeType || 'application/octet-stream',
-            fileSize,
+          b2Upload = await backblazeService.uploadFile(
+            finalBuffer,
+            finalFilename,
+            finalMimeType,
             progressEmitter
           );
         }
-        
-        // Check if file was truncated during upload
-        if (fileTruncated) {
-          throw new Error('File size exceeds 1GB limit');
-        }
 
-        // Validate uploaded size matches expected size
-        const uploadedBytes = b2Upload.uploadedBytes;
-        const sizeTolerance = 1024; // 1KB tolerance for metadata
-        if (Math.abs(uploadedBytes - fileSize) > sizeTolerance) {
-          console.error(`[UPLOAD] Size mismatch: expected ${fileSize}, got ${uploadedBytes}`);
-          // Clean up the uploaded file from Backblaze
-          try {
-            await backblazeService.deleteFile(uniqueFileName, b2Upload.fileId);
-          } catch (cleanupError) {
-            console.error('[UPLOAD] Failed to clean up mismatched file:', cleanupError);
-          }
-          throw new Error(`File size mismatch: expected ${fileSize} bytes, but ${uploadedBytes} bytes were uploaded`);
-        }
-
-        console.log(`[UPLOAD] Complete: ${formatFileSize(uploadedBytes)}`);
+        console.log(`[UPLOAD] Complete: ${formatFileSize(b2Upload.uploadedBytes)}`);
 
         const { password, maxDownloads, isOneTime } = formFields;
         
@@ -184,10 +204,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const dbFile = await storage.createFile({
           code,
-          filename: uniqueFileName,
-          originalName: filename,
+          filename: finalFilename,
+          originalName: originalDisplayName,
           size: fileSize,
-          mimetype: mimeType,
+          mimetype: finalMimeType,
           expiresAt,
           passwordHash,
           isPasswordProtected,
@@ -205,6 +225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           isPasswordProtected: dbFile.isPasswordProtected,
           maxDownloads: dbFile.maxDownloads,
           isOneTime: dbFile.isOneTime,
+          fileCount: collectedFiles.length,
         });
       } catch (error: any) {
         if (!uploadComplete) {

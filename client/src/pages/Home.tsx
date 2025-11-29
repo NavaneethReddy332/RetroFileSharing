@@ -4,11 +4,11 @@ import { RetroLayout } from "../components/RetroLayout";
 import { useTerminal } from "../context/TerminalContext";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordStrengthMeter } from "@/components/PasswordStrengthMeter";
-import { Upload, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Upload, Eye, EyeOff, AlertCircle, X } from "lucide-react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -51,13 +51,33 @@ export default function Home() {
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const getTotalSize = (fileList: File[]): number => {
+    return fileList.reduce((total, f) => total + f.size, 0);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      addLog(`SELECTED_FILE: ${selectedFile.name}`);
-      addLog(`SIZE: ${formatFileSize(selectedFile.size)}`);
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      setFiles(prev => {
+        const newFiles = [...prev, ...selectedFiles];
+        return newFiles;
+      });
+      selectedFiles.forEach(selectedFile => {
+        addLog(`SELECTED_FILE: ${selectedFile.name}`);
+        addLog(`SIZE: ${formatFileSize(selectedFile.size)}`);
+      });
+      if (selectedFiles.length > 1) {
+        addLog(`TOTAL_FILES: ${selectedFiles.length}`);
+      }
     }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => {
+      const removed = prev[index];
+      addLog(`REMOVED_FILE: ${removed.name}`);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -77,17 +97,22 @@ export default function Home() {
     e.stopPropagation();
     setIsDragOver(false);
     
-    const droppedFiles = e.dataTransfer.files;
-    if (droppedFiles && droppedFiles[0]) {
-      const droppedFile = droppedFiles[0];
-      setFile(droppedFile);
-      addLog(`DROPPED_FILE: ${droppedFile.name}`);
-      addLog(`SIZE: ${formatFileSize(droppedFile.size)}`);
+    const droppedFileList = e.dataTransfer.files;
+    if (droppedFileList && droppedFileList.length > 0) {
+      const droppedFiles = Array.from(droppedFileList);
+      setFiles(prev => [...prev, ...droppedFiles]);
+      droppedFiles.forEach(droppedFile => {
+        addLog(`DROPPED_FILE: ${droppedFile.name}`);
+        addLog(`SIZE: ${formatFileSize(droppedFile.size)}`);
+      });
+      if (droppedFiles.length > 1) {
+        addLog(`TOTAL_FILES: ${droppedFiles.length}`);
+      }
     }
   }, [addLog, formatFileSize]);
 
   const handleUpload = async () => {
-    if (!file || isUploading) return;
+    if (files.length === 0 || isUploading) return;
     
     if (password && password !== confirmPassword) {
       toast({
@@ -103,8 +128,18 @@ export default function Home() {
       setIsUploading(true);
       lastProgressRef.current = 0;
       
-      addLog(`INITIATING_UPLOAD: ${file.name}`);
-      addLog(`FILE_SIZE: ${formatFileSize(file.size)}`);
+      const totalSize = getTotalSize(files);
+      const isMultiFile = files.length > 1;
+      
+      if (isMultiFile) {
+        addLog(`INITIATING_MULTI_FILE_UPLOAD: ${files.length} files`);
+        addLog(`FILES: ${files.map(f => f.name).join(', ')}`);
+        addLog(`TOTAL_SIZE: ${formatFileSize(totalSize)}`);
+        addLog(`COMPRESSING_TO_ZIP...`);
+      } else {
+        addLog(`INITIATING_UPLOAD: ${files[0].name}`);
+        addLog(`FILE_SIZE: ${formatFileSize(files[0].size)}`);
+      }
       
       const uploadId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       
@@ -151,12 +186,16 @@ export default function Home() {
       }, 100);
 
       const formData = new FormData();
-      formData.append('fileSize', file.size.toString());
+      formData.append('totalSize', totalSize.toString());
+      formData.append('fileCount', files.length.toString());
       if (password) formData.append('password', password);
       if (maxDownloads) formData.append('maxDownloads', maxDownloads);
       if (isOneTime) formData.append('isOneTime', 'true');
-      formData.append('expiresIn', expiresIn); // hours
-      formData.append('file', file);
+      formData.append('expiresIn', expiresIn);
+      
+      files.forEach((file, index) => {
+        formData.append('files', file);
+      });
 
       const data = await new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -351,21 +390,58 @@ export default function Home() {
                     style={{ color: isDragOver ? 'hsl(var(--accent))' : 'hsl(var(--text-secondary))' }} 
                     aria-hidden="true"
                   />
-                  {file ? (
+                  {files.length > 0 ? (
                     <div>
-                      <div className="font-bold" style={{ color: 'hsl(var(--accent))' }}>{file.name}</div>
-                      <div className="text-sm" style={{ color: 'hsl(var(--text-secondary))' }}>{formatFileSize(file.size)}</div>
+                      <div className="font-bold" style={{ color: 'hsl(var(--accent))' }}>
+                        {files.length === 1 ? files[0].name : `${files.length} files selected`}
+                      </div>
+                      <div className="text-sm" style={{ color: 'hsl(var(--text-secondary))' }}>
+                        {formatFileSize(getTotalSize(files))}
+                        {files.length > 1 && ' (will be compressed to ZIP)'}
+                      </div>
                     </div>
                   ) : (
                     <div style={{ color: 'hsl(var(--text-secondary))' }}>
-                      <div className="font-bold">Drag & drop a file here</div>
-                      <div className="text-sm">or click to browse</div>
+                      <div className="font-bold">Drag & drop files here</div>
+                      <div className="text-sm">or click to browse (multiple files supported)</div>
                     </div>
                   )}
                 </div>
+                {files.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto retro-border-inset p-2">
+                    {files.map((file, index) => (
+                      <div 
+                        key={`${file.name}-${index}`} 
+                        className="flex items-center justify-between gap-2 py-1 px-2 text-sm"
+                        data-testid={`file-item-${index}`}
+                      >
+                        <span className="truncate flex-1" style={{ color: 'hsl(var(--text-primary))' }}>
+                          {file.name}
+                        </span>
+                        <span className="text-xs flex-shrink-0" style={{ color: 'hsl(var(--text-secondary))' }}>
+                          {formatFileSize(file.size)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFile(index);
+                          }}
+                          className="p-1 flex-shrink-0"
+                          style={{ color: 'hsl(var(--destructive))' }}
+                          aria-label={`Remove ${file.name}`}
+                          data-testid={`button-remove-file-${index}`}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <input 
                   ref={fileInputRef}
                   type="file" 
+                  multiple
                   onChange={handleFileChange}
                   className="hidden"
                   aria-label="File upload input"
@@ -491,7 +567,7 @@ export default function Home() {
                 <div className="flex gap-2">
                   <button 
                     onClick={handleUpload}
-                    disabled={!file || isUploading}
+                    disabled={files.length === 0 || isUploading}
                     className="retro-button"
                     data-testid="button-upload"
                   >
