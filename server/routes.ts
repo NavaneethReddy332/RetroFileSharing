@@ -140,7 +140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     let uploadComplete = false;
     let isAborted = false;
-    let b2UploadInProgress = false;
+    let processingInProgress = false;
     const formFields: Record<string, string> = {};
     const tempFiles: TempFileInfo[] = [];
     const allTempPaths: string[] = [];
@@ -151,21 +151,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const cleanupAllTempFiles = async () => {
       for (const path of allTempPaths) {
         try {
-          await unlinkAsync(path);
+          if (existsSync(path)) {
+            await unlinkAsync(path);
+          }
         } catch (err) {}
       }
     };
     
     req.on('aborted', async () => {
       isAborted = true;
-      if (!b2UploadInProgress) {
+      if (!processingInProgress && !uploadComplete) {
         await cleanupAllTempFiles();
       }
       if (code) releaseCode(code);
     });
     
     req.on('close', async () => {
-      if (!uploadComplete && !isAborted && !b2UploadInProgress) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (!uploadComplete && !isAborted && !processingInProgress) {
         await cleanupAllTempFiles();
         if (code) releaseCode(code);
       }
@@ -176,6 +179,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     busboy.on('file', async (fieldname, fileStream, info) => {
+      processingInProgress = true;
+      
       const { filename, mimeType } = info;
       const tempPath = join(TEMP_DIR, `upload-${Date.now()}-${randomBytes(8).toString('hex')}`);
       allTempPaths.push(tempPath);
@@ -237,7 +242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     busboy.on('finish', async () => {
       if (isAborted) return;
       
-      b2UploadInProgress = true;
+      processingInProgress = true;
       
       try {
         await Promise.all(fileWritePromises);
@@ -245,7 +250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const LARGE_FILE_THRESHOLD = 100 * 1024 * 1024;
         
         if (tempFiles.length === 0) {
-          b2UploadInProgress = false;
+          processingInProgress = false;
           await cleanupAllTempFiles();
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'No files uploaded' });
@@ -257,7 +262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const file of tempFiles) {
           const validation = validateFile(file.filename, file.mimeType, file.size);
           if (!validation.valid) {
-            b2UploadInProgress = false;
+            processingInProgress = false;
             await cleanupAllTempFiles();
             if (progressEmitter) {
               progressEmitter.emit('progress', { type: 'error', error: validation.error });
@@ -270,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           code = await generateUniqueCode();
         } catch (codeError) {
-          b2UploadInProgress = false;
+          processingInProgress = false;
           await cleanupAllTempFiles();
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'Failed to generate unique code' });
@@ -363,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } catch (readError: any) {
               console.error('[UPLOAD] Failed to read temp file:', readError.message);
               console.error('[UPLOAD] Full error:', readError);
-              b2UploadInProgress = false;
+              processingInProgress = false;
               await cleanupAllTempFiles();
               if (code) releaseCode(code);
               if (progressEmitter) {
@@ -401,7 +406,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             );
           }
         } catch (uploadError: any) {
-          b2UploadInProgress = false;
+          processingInProgress = false;
           console.error('[UPLOAD] B2 upload failed:', uploadError.message);
           if (code) releaseCode(code);
           if (progressEmitter) {
@@ -411,7 +416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
         
-        b2UploadInProgress = false;
+        processingInProgress = false;
 
         console.log(`[UPLOAD] Complete: ${formatFileSize(b2Upload.uploadedBytes)}`);
 
