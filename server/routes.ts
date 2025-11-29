@@ -137,13 +137,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (collectedFiles.length > 1) {
           console.log(`[UPLOAD] Creating ZIP archive for ${collectedFiles.length} files`);
           
+          const { PassThrough } = await import('stream');
+          
           const zipBuffer = await new Promise<Buffer>((resolve, reject) => {
             const archive = archiver('zip', { zlib: { level: 6 } });
+            const passThrough = new PassThrough();
             const chunks: Buffer[] = [];
             
-            archive.on('data', (chunk: Buffer) => chunks.push(chunk));
-            archive.on('end', () => resolve(Buffer.concat(chunks)));
+            passThrough.on('data', (chunk: Buffer) => chunks.push(chunk));
+            passThrough.on('end', () => resolve(Buffer.concat(chunks)));
+            passThrough.on('error', reject);
+            
             archive.on('error', reject);
+            archive.on('warning', (err: any) => {
+              if (err.code !== 'ENOENT') {
+                console.warn('[ZIP] Warning:', err);
+              }
+            });
+            
+            archive.pipe(passThrough);
             
             for (const file of collectedFiles) {
               archive.append(file.buffer, { name: file.filename });
