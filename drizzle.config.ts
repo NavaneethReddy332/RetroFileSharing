@@ -1,19 +1,14 @@
 import { defineConfig } from "drizzle-kit";
 
-if (!process.env.TURSO_DATABASE_URL) {
-  throw new Error("TURSO_DATABASE_URL is required");
-}
-
-if (!process.env.TURSO_AUTH_TOKEN) {
-  throw new Error("TURSO_AUTH_TOKEN is required");
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required");
 }
 
 export default defineConfig({
   out: "./migrations",
   schema: "./shared/schema.ts",
-  dialect: "turso",
+  dialect: "postgresql",
   dbCredentials: {
-    url: process.env.TURSO_DATABASE_URL,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: process.env.DATABASE_URL,
   },
 });

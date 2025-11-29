@@ -1,9 +1,10 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, timestamp, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
@@ -16,15 +17,15 @@ export const insertUserSchema = createInsertSchema(users).pick({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
-export const files = sqliteTable("files", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+export const files = pgTable("files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: text("code").notNull().unique(),
   filename: text("filename").notNull(),
   originalName: text("original_name").notNull(),
-  size: integer("size", { mode: "number" }).notNull(),
+  size: integer("size").notNull(),
   mimetype: text("mimetype").notNull(),
-  uploadedAt: integer("uploaded_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
   
   b2FileId: text("b2_file_id"),
   
@@ -44,13 +45,13 @@ export const insertFileSchema = createInsertSchema(files).omit({
 export type InsertFile = z.infer<typeof insertFileSchema>;
 export type File = typeof files.$inferSelect;
 
-export const guestbookEntries = sqliteTable("guestbook_entries", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+export const guestbookEntries = pgTable("guestbook_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   displayName: text("display_name").notNull(),
   message: text("message").notNull(),
   location: text("location"),
   favoriteSystem: text("favorite_system"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
   isApproved: integer("is_approved").notNull().default(1),
 });
 
