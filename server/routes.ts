@@ -9,7 +9,7 @@ import Busboy from "busboy";
 import { EventEmitter } from "events";
 import archiver from "archiver";
 import { PassThrough, Readable, Transform } from "stream";
-import { createWriteStream, createReadStream, unlink, stat } from "fs";
+import { createWriteStream, createReadStream, unlink, stat, readFileSync } from "fs";
 import { promisify } from "util";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -267,7 +267,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + expiresInHours);
 
-        let finalStream: NodeJS.ReadableStream;
+        let finalStream: NodeJS.ReadableStream | null = null;
+        let fileBuffer: Buffer | null = null;
         let finalFilename: string;
         let finalMimeType: string;
         let originalDisplayName: string;
@@ -314,7 +315,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           originalDisplayName = `archive-${tempFiles.length}-files.zip`;
           finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${originalDisplayName}`;
           finalMimeType = 'application/zip';
-          finalStream = createReadStream(tempZipPath);
+          
+          if (fileSize < LARGE_FILE_THRESHOLD) {
+            fileBuffer = readFileSync(tempZipPath);
+          } else {
+            finalStream = createReadStream(tempZipPath);
+          }
           
           console.log(`[UPLOAD] ZIP created: ${formatFileSize(fileSize)}`);
         } else {
@@ -323,8 +329,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           originalDisplayName = file.filename;
           finalFilename = `${Date.now()}-${randomBytes(8).toString('hex')}-${file.filename}`;
           finalMimeType = file.mimeType;
-          finalStream = createReadStream(file.path);
+          
+          if (fileSize < LARGE_FILE_THRESHOLD) {
+            try {
+              fileBuffer = readFileSync(file.path);
+              console.log(`[UPLOAD] File read into memory: ${formatFileSize(fileBuffer.length)}`);
+            } catch (readError: any) {
+              console.error('[UPLOAD] Failed to read temp file:', readError.message);
+              b2UploadInProgress = false;
+              await cleanupAllTempFiles();
+              if (code) releaseCode(code);
+              if (progressEmitter) {
+                progressEmitter.emit('progress', { type: 'error', error: 'Failed to read uploaded file' });
+              }
+              res.status(500).json({ error: 'Failed to read uploaded file' });
+              return;
+            }
+          } else {
+            finalStream = createReadStream(file.path);
+          }
         }
+        
+        await cleanupAllTempFiles();
         
         console.log(`[UPLOAD] ${formatFileSize(fileSize)} | ${fileSize >= LARGE_FILE_THRESHOLD ? 'Large File API' : 'Standard'}`);
         
@@ -333,21 +359,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           if (fileSize >= LARGE_FILE_THRESHOLD) {
             b2Upload = await backblazeService.uploadLargeFile(
-              finalStream,
+              finalStream!,
               finalFilename,
               finalMimeType,
               fileSize,
               progressEmitter
             );
           } else {
-            const chunks: Buffer[] = [];
-            for await (const chunk of finalStream) {
-              chunks.push(chunk as Buffer);
-            }
-            const buffer = Buffer.concat(chunks);
-            
             b2Upload = await backblazeService.uploadFile(
-              buffer,
+              fileBuffer!,
               finalFilename,
               finalMimeType,
               progressEmitter
@@ -356,7 +376,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (uploadError: any) {
           b2UploadInProgress = false;
           console.error('[UPLOAD] B2 upload failed:', uploadError.message);
-          await cleanupAllTempFiles();
           if (code) releaseCode(code);
           if (progressEmitter) {
             progressEmitter.emit('progress', { type: 'error', error: 'Failed to upload to storage' });
@@ -366,7 +385,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         b2UploadInProgress = false;
-        await cleanupAllTempFiles();
 
         console.log(`[UPLOAD] Complete: ${formatFileSize(b2Upload.uploadedBytes)}`);
 
