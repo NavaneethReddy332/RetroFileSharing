@@ -24,8 +24,8 @@ export const files = sqliteTable("files", {
   originalName: text("original_name").notNull(),
   size: integer("size").notNull(),
   mimetype: text("mimetype").notNull(),
-  uploadedAt: integer("uploaded_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  uploadedAt: integer("uploaded_at", { mode: "timestamp_ms" }).notNull().default(sql`(unixepoch() * 1000)`),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
   
   b2FileId: text("b2_file_id"),
   
@@ -51,7 +51,7 @@ export const guestbookEntries = sqliteTable("guestbook_entries", {
   message: text("message").notNull(),
   location: text("location"),
   favoriteSystem: text("favorite_system"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(sql`(unixepoch() * 1000)`),
   isApproved: integer("is_approved").notNull().default(1),
 });
 
