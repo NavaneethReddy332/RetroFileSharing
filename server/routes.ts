@@ -9,10 +9,24 @@ import Busboy from "busboy";
 import { EventEmitter } from "events";
 import archiver from "archiver";
 import { PassThrough, Readable, Transform } from "stream";
-import { createWriteStream, createReadStream, unlink, stat, readFileSync } from "fs";
+import { createWriteStream, createReadStream, unlink, stat, readFileSync, existsSync, mkdirSync } from "fs";
 import { promisify } from "util";
-import { tmpdir } from "os";
 import { join } from "path";
+
+const TEMP_DIR = '/tmp/retrosend-uploads';
+
+function ensureTempDir(): void {
+  try {
+    if (!existsSync(TEMP_DIR)) {
+      mkdirSync(TEMP_DIR, { recursive: true });
+      console.log('[UPLOAD] Created temp directory:', TEMP_DIR);
+    }
+  } catch (err: any) {
+    console.error('[UPLOAD] Failed to create temp directory:', err.message);
+  }
+}
+
+ensureTempDir();
 import { 
   passwordVerificationLimiter, 
   downloadLimiter, 
@@ -111,6 +125,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/upload", uploadLimiter, async (req, res) => {
+    ensureTempDir();
+    
     const startTime = Date.now();
     const uploadId = req.query.uploadId as string || randomBytes(16).toString('hex');
     const progressEmitter = uploadProgressEmitters.get(uploadId);
@@ -161,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     busboy.on('file', async (fieldname, fileStream, info) => {
       const { filename, mimeType } = info;
-      const tempPath = join(tmpdir(), `upload-${Date.now()}-${randomBytes(8).toString('hex')}`);
+      const tempPath = join(TEMP_DIR, `upload-${Date.now()}-${randomBytes(8).toString('hex')}`);
       allTempPaths.push(tempPath);
       
       const writeStream = createWriteStream(tempPath);
@@ -282,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             progressEmitter.emit('progress', { type: 'progress', percent: 50, stage: 'compressing' });
           }
           
-          tempZipPath = join(tmpdir(), `zip-${Date.now()}-${randomBytes(8).toString('hex')}.zip`);
+          tempZipPath = join(TEMP_DIR, `zip-${Date.now()}-${randomBytes(8).toString('hex')}.zip`);
           allTempPaths.push(tempZipPath);
           const zipWriteStream = createWriteStream(tempZipPath);
           const archive = archiver('zip', { zlib: { level: 6 } });
@@ -332,10 +348,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (fileSize < LARGE_FILE_THRESHOLD) {
             try {
+              const fileExists = existsSync(file.path);
+              console.log(`[UPLOAD] Temp file exists: ${fileExists}, path: ${file.path}, expected size: ${file.size}`);
+              
+              if (!fileExists) {
+                throw new Error(`Temp file not found at ${file.path}`);
+              }
+              
+              const actualStats = await statAsync(file.path);
+              console.log(`[UPLOAD] Actual file size: ${actualStats.size}`);
+              
               fileBuffer = readFileSync(file.path);
               console.log(`[UPLOAD] File read into memory: ${formatFileSize(fileBuffer.length)}`);
             } catch (readError: any) {
               console.error('[UPLOAD] Failed to read temp file:', readError.message);
+              console.error('[UPLOAD] Full error:', readError);
               b2UploadInProgress = false;
               await cleanupAllTempFiles();
               if (code) releaseCode(code);

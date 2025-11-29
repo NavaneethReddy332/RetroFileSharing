@@ -14,9 +14,10 @@ B2_BUCKET_NAME=your_bucket_name
 
 **This is why you're getting 502 errors!** Without these variables, file uploads fail.
 
-### 2. Database Configuration (REQUIRED)
+### 2. Database Configuration (REQUIRED - Turso)
 ```
-DATABASE_URL=your_postgresql_connection_string
+TURSO_DATABASE_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=your_turso_auth_token
 ```
 
 ### 3. Session Secret (REQUIRED for security)
@@ -49,20 +50,31 @@ These are set in the `deploy_config_tool` and should work automatically.
 
 ## Database Setup
 
-After setting the `DATABASE_URL`:
+After setting the Turso credentials:
 
-1. The database schema will be automatically pushed on first deployment
-2. Or you can manually run: `npm run db:push` in the Render shell
+1. Create a Turso database at https://turso.tech
+2. Get your database URL and auth token from the Turso dashboard
+3. Add them as environment variables on Render
+4. The schema will be synced automatically
 
 ## Troubleshooting 502 Errors
 
 The 502 errors you're experiencing are caused by:
 
 1. **Missing Backblaze credentials** - The upload endpoint fails when it can't connect to B2
-2. **Missing database connection** - The app can't store file metadata
+2. **Missing Turso database connection** - The app can't store file metadata
 3. **Missing session secret** - Session management fails
 
 After adding all environment variables, the 502 errors should be resolved.
+
+## Troubleshooting 500 "Failed to read uploaded file" Error
+
+If you see this error on Render but uploads work on Replit:
+
+1. This is typically caused by temp file issues on Render's ephemeral filesystem
+2. The app now uses `/tmp/retrosend-uploads` directory explicitly
+3. Redeploy your app after getting the latest code
+4. Check Render logs for detailed error messages
 
 ## Port Configuration
 
