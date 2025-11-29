@@ -364,9 +364,9 @@ export default function Home() {
       </div>
       
       <div className="retro-border p-4 sm:p-6 md:p-8 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
           {/* Upload Section */}
-          <div className="space-y-4">
+          <div className="space-y-4 md:col-span-2">
             <form onSubmit={(e) => e.preventDefault()} autoComplete="off" className="space-y-4">
               <div>
                 <div className="font-bold mb-3">Step 1: Select File</div>
