@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useTerminal } from '../context/TerminalContext';
+import { Coffee } from 'lucide-react';
 import generatedVideo from '@assets/Cinematic_Tech_Startup_Intro_Animation_1764007246565.mp4';
 
 interface RetroLayoutProps {
@@ -56,6 +57,25 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </div>
           
           <div className="flex items-center gap-2 flex-1 justify-end">
+            {/* Buy Me a Coffee Button */}
+            <a
+              href="https://buymeacoffee.com/roninhack"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold transition-all duration-200 hover:scale-105 border-2"
+              style={{ 
+                backgroundColor: '#ff4d00',
+                borderColor: '#000000',
+                color: '#000000',
+                fontFamily: 'Cookie, cursive',
+                borderRadius: '4px',
+              }}
+              data-testid="link-buy-me-coffee"
+            >
+              <Coffee size={16} />
+              <span>Buy me a coffee</span>
+            </a>
+            
             {/* Hamburger Menu Button */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -155,6 +175,26 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             >
               [ GUESTBOOK ]
             </Link>
+            
+            {/* Buy Me a Coffee - Mobile */}
+            <a
+              href="https://buymeacoffee.com/roninhack"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2 mt-4 text-base font-bold transition-all duration-200 hover:scale-105 border-2"
+              style={{ 
+                backgroundColor: '#ff4d00',
+                borderColor: '#000000',
+                color: '#000000',
+                fontFamily: 'Cookie, cursive',
+                borderRadius: '4px',
+              }}
+              onClick={() => setIsMenuOpen(false)}
+              data-testid="link-buy-me-coffee-mobile"
+            >
+              <Coffee size={18} />
+              <span>Buy me a coffee</span>
+            </a>
           </div>
         </nav>
       </div>
