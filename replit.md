@@ -198,15 +198,15 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Updates
 
-### Database Migration (November 29, 2025)
-- **Migrated from Turso to PostgreSQL**: Replaced Turso (LibSQL) with Replit-managed PostgreSQL database
-- Updated Drizzle ORM configuration to use `drizzle-orm/node-postgres` instead of `drizzle-orm/libsql`
-- Changed database schema from SQLite to PostgreSQL format:
-  - Replaced `sqliteTable` with `pgTable`
-  - Updated timestamp fields from `timestamp_ms` mode to PostgreSQL native `timestamp`
-  - Updated ID generation from crypto.randomUUID() to PostgreSQL's `gen_random_uuid()`
-- Updated database client from `@libsql/client` to `pg` (node-postgres)
-- All environment variables now use Replit's managed `DATABASE_URL` instead of `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
+### Turso Database Setup (November 29, 2025)
+- **Using Turso (LibSQL)**: Edge SQLite database with global replication
+- Drizzle ORM configured with `drizzle-orm/libsql` for Turso connectivity
+- Database schema uses SQLite format:
+  - Uses `sqliteTable` for table definitions
+  - Timestamp fields use `integer` with `timestamp_ms` mode for Date handling
+  - ID generation uses `crypto.randomUUID()` with text primary keys
+- Database client: `@libsql/client` for Turso connection
+- Required environment variables: `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
 
 ### November 28, 2025
 
