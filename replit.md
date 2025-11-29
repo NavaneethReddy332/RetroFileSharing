@@ -50,10 +50,11 @@ Preferred communication style: Simple, everyday language.
 - archiver package for creating ZIP archives from multiple files
 
 **Data Layer**
-- In-memory storage implementation (MemStorage) for development/testing
-- Drizzle ORM configured for PostgreSQL database with schema definitions
+- **Turso database** (LibSQL/SQLite) for persistent data storage
+- Drizzle ORM configured for Turso with SQLite-compatible schema definitions
 - Automatic file cleanup mechanism using setInterval to remove expired files
-- Schema includes Users and Files tables with proper relationships and constraints
+- Schema includes Users, Files, and GuestbookEntries tables
+- Timestamps stored in milliseconds using `timestamp_ms` mode for proper Date handling
 
 **Request/Response Handling**
 - JSON body parsing with raw body preservation for webhook verification scenarios
@@ -122,17 +123,18 @@ Preferred communication style: Simple, everyday language.
 - All routes fall through to index.html for SPA routing
 
 **Database Operations**
-- `npm run db:push` - Pushes schema changes to PostgreSQL using Drizzle Kit
+- `npm run db:push` - Pushes schema changes to Turso using Drizzle Kit
 - Migration files stored in `/migrations` directory
-- Configured for Neon serverless PostgreSQL
+- Configured for Turso (LibSQL) database
 
 ## External Dependencies
 
 ### Third-Party Services
 
 **Database**
-- Neon Serverless PostgreSQL (@neondatabase/serverless) - Cloud PostgreSQL database with connection pooling
-- Configured via DATABASE_URL environment variable
+- Turso (LibSQL) - Edge SQLite database with global replication
+- @libsql/client for database connectivity
+- Configured via TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets
 
 **Cloud Storage**
 - Backblaze B2 (backblaze-b2) - Cloud object storage for file uploads
@@ -151,7 +153,7 @@ Preferred communication style: Simple, everyday language.
 **Core Framework**
 - react, react-dom - UI library
 - express - Web server framework
-- drizzle-orm - Type-safe ORM for PostgreSQL
+- drizzle-orm - Type-safe ORM for Turso/SQLite
 - vite - Build tool and dev server
 
 **File Handling**
