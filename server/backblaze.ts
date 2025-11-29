@@ -138,12 +138,16 @@ class BackblazeService {
       const totalSize = fileBuffer.length;
 
       if (progressEmitter) {
-        progressEmitter.emit('progress', { type: 'progress', percent: 0 });
+        progressEmitter.emit('progress', { type: 'progress', percent: 50 });
       }
 
       const uploadUrlResponse = await withRetry(() => 
         this.b2.getUploadUrl({ bucketId: this.config.bucketId })
       );
+
+      if (progressEmitter) {
+        progressEmitter.emit('progress', { type: 'progress', percent: 55 });
+      }
 
       const headers: Record<string, string> = {
         'Authorization': uploadUrlResponse.data.authorizationToken,
@@ -152,6 +156,10 @@ class BackblazeService {
         'Content-Length': totalSize.toString(),
         'X-Bz-Content-Sha1': sha1Hash,
       };
+
+      if (progressEmitter) {
+        progressEmitter.emit('progress', { type: 'progress', percent: 60 });
+      }
 
       const response = await withRetry(async () => {
         const res = await fetch(uploadUrlResponse.data.uploadUrl, {
@@ -167,6 +175,10 @@ class BackblazeService {
         
         return res;
       });
+
+      if (progressEmitter) {
+        progressEmitter.emit('progress', { type: 'progress', percent: 90 });
+      }
 
       const result = await response.json();
 

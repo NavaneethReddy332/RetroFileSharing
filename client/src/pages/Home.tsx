@@ -22,21 +22,13 @@ export default function Home() {
   const { toast } = useToast();
   const lastProgressRef = useRef<number>(0);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
-  const cloudUploadIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const streamingSpinnerRef = useRef<NodeJS.Timeout | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentStageRef = useRef<string>("");
+  const lastB2ProgressRef = useRef<number>(0);
 
   useEffect(() => {
     return () => {
-      if (cloudUploadIntervalRef.current) {
-        clearInterval(cloudUploadIntervalRef.current);
-        cloudUploadIntervalRef.current = null;
-      }
-      if (streamingSpinnerRef.current) {
-        clearInterval(streamingSpinnerRef.current);
-        streamingSpinnerRef.current = null;
-      }
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -111,6 +103,12 @@ export default function Home() {
     }
   }, [addLog, formatFileSize]);
 
+  const createProgressBar = (percent: number): string => {
+    const filled = Math.floor(percent / 10);
+    const empty = 10 - filled;
+    return '#'.repeat(filled) + '.'.repeat(empty);
+  };
+
   const handleUpload = async () => {
     if (files.length === 0 || isUploading) return;
     
@@ -127,18 +125,18 @@ export default function Home() {
     try {
       setIsUploading(true);
       lastProgressRef.current = 0;
+      lastB2ProgressRef.current = 0;
+      currentStageRef.current = "upload";
       
       const totalSize = getTotalSize(files);
       const isMultiFile = files.length > 1;
       
       if (isMultiFile) {
-        addLog(`INITIATING_MULTI_FILE_UPLOAD: ${files.length} files`);
-        addLog(`FILES: ${files.map(f => f.name).join(', ')}`);
-        addLog(`TOTAL_SIZE: ${formatFileSize(totalSize)}`);
-        addLog(`COMPRESSING_TO_ZIP...`);
+        addLog(`INITIATING UPLOAD: ${files.length} files`);
+        addLog(`TOTAL SIZE: ${formatFileSize(totalSize)}`);
       } else {
-        addLog(`INITIATING_UPLOAD: ${files[0].name}`);
-        addLog(`FILE_SIZE: ${formatFileSize(files[0].size)}`);
+        addLog(`INITIATING UPLOAD: ${files[0].name}`);
+        addLog(`FILE SIZE: ${formatFileSize(files[0].size)}`);
       }
       
       const uploadId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -150,12 +148,12 @@ export default function Home() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'progress' && data.percent !== undefined) {
-            const filled = Math.floor(data.percent / 10);
-            const empty = 10 - filled;
-            const progressBar = '#'.repeat(filled) + '.'.repeat(empty);
-            const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
-            const spinnerIndex = Math.floor(Date.now() / 100) % spinnerFrames.length;
-            updateLastLog(`UPLOADING TO BACKBLAZE  ${data.percent}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
+            if (data.percent > lastB2ProgressRef.current) {
+              lastB2ProgressRef.current = data.percent;
+              if (currentStageRef.current === "b2") {
+                updateLastLog(`SAVING TO CLOUD: ${data.percent}% [${createProgressBar(data.percent)}]`);
+              }
+            }
           } else if (data.type === 'complete') {
             if (eventSourceRef.current) {
               eventSourceRef.current.close();
@@ -172,18 +170,7 @@ export default function Home() {
         }
       };
       
-      const spinnerFrames = ['[    ]', '[=   ]', '[==  ]', '[=== ]', '[====]', '[ ===]', '[  ==]', '[   =]'];
-      let spinnerIndex = 0;
-      addLog(`STREAMING_TO_SERVER  0%  [..........] `);
-      
-      streamingSpinnerRef.current = setInterval(() => {
-        spinnerIndex = (spinnerIndex + 1) % spinnerFrames.length;
-        const percentComplete = lastProgressRef.current;
-        const filled = Math.floor(percentComplete / 10);
-        const empty = 10 - filled;
-        const progressBar = '#'.repeat(filled) + '.'.repeat(empty);
-        updateLastLog(`STREAMING_TO_SERVER  ${percentComplete}%  [${progressBar}] ${spinnerFrames[spinnerIndex]}`);
-      }, 100);
+      addLog(`UPLOADING: 0% [..........]`);
 
       const formData = new FormData();
       formData.append('totalSize', totalSize.toString());
@@ -193,7 +180,7 @@ export default function Home() {
       if (isOneTime) formData.append('isOneTime', 'true');
       formData.append('expiresIn', expiresIn);
       
-      files.forEach((file, index) => {
+      files.forEach((file) => {
         formData.append('files', file);
       });
 
@@ -205,17 +192,15 @@ export default function Home() {
           if (event.lengthComputable) {
             const percentComplete = Math.round((event.loaded / event.total) * 100);
             
-            if (percentComplete !== lastProgressRef.current) {
+            if (percentComplete !== lastProgressRef.current && currentStageRef.current === "upload") {
               lastProgressRef.current = percentComplete;
+              updateLastLog(`UPLOADING: ${percentComplete}% [${createProgressBar(percentComplete)}]`);
             }
             
-            if (percentComplete === 100) {
-              if (streamingSpinnerRef.current) {
-                clearInterval(streamingSpinnerRef.current);
-                streamingSpinnerRef.current = null;
-              }
-              updateLastLog(`STREAMING_TO_SERVER  100%  [##########] DONE`);
-              addLog(`UPLOADING TO BACKBLAZE  0%  [..........] [    ]`);
+            if (percentComplete === 100 && currentStageRef.current === "upload") {
+              currentStageRef.current = "b2";
+              updateLastLog(`UPLOADING: 100% [##########] DONE`);
+              addLog(`SAVING TO CLOUD: 0% [..........]`);
             }
           }
         });
@@ -225,23 +210,18 @@ export default function Home() {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
           }
-          if (cloudUploadIntervalRef.current) {
-            clearInterval(cloudUploadIntervalRef.current);
-            cloudUploadIntervalRef.current = null;
-          }
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const response = JSON.parse(xhr.responseText);
-              updateLastLog(`UPLOAD_COMPLETE: 100%`);
-              console.log('Upload successful, response:', response);
+              updateLastLog(`SAVING TO CLOUD: 100% [##########] DONE`);
               resolve(response);
             } catch (error) {
-              console.error('Error parsing response:', error, 'Response:', xhr.responseText);
+              console.error('Error parsing response:', error);
               reject(new Error('Invalid server response'));
             }
           } else {
             console.error('Upload failed:', xhr.status, xhr.responseText);
-            addLog(`ERROR: UPLOAD_FAILED - ${xhr.status}`, 'error');
+            addLog(`ERROR: UPLOAD FAILED`, 'error');
             try {
               const errorResponse = JSON.parse(xhr.responseText);
               reject(new Error(errorResponse.error || `Upload failed: ${xhr.status}`));
@@ -251,16 +231,11 @@ export default function Home() {
           }
         });
 
-        xhr.addEventListener('error', (e) => {
+        xhr.addEventListener('error', () => {
           if (eventSourceRef.current) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
           }
-          if (cloudUploadIntervalRef.current) {
-            clearInterval(cloudUploadIntervalRef.current);
-            cloudUploadIntervalRef.current = null;
-          }
-          console.error('Upload network error:', e);
           reject(new Error('Network error'));
         });
 
@@ -268,10 +243,6 @@ export default function Home() {
           if (eventSourceRef.current) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
-          }
-          if (cloudUploadIntervalRef.current) {
-            clearInterval(cloudUploadIntervalRef.current);
-            cloudUploadIntervalRef.current = null;
           }
           reject(new Error('Upload cancelled'));
         });
@@ -281,10 +252,6 @@ export default function Home() {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
           }
-          if (cloudUploadIntervalRef.current) {
-            clearInterval(cloudUploadIntervalRef.current);
-            cloudUploadIntervalRef.current = null;
-          }
           reject(new Error('Upload timeout'));
         });
 
@@ -293,16 +260,15 @@ export default function Home() {
         xhr.send(formData);
       });
 
-      addLog(`PROCESSING_COMPLETE`);
-      if (password) addLog(`PASSWORD_PROTECTED`);
-      if (maxDownloads) addLog(`LIMIT: ${maxDownloads}`);
-      if (isOneTime) addLog(`ONE_TIME_MODE`);
-      addLog(`SECURE_CODE: ${data.code}`);
+      addLog(`UPLOAD COMPLETE`);
+      if (password) addLog(`PASSWORD PROTECTED: YES`);
+      if (maxDownloads) addLog(`DOWNLOAD LIMIT: ${maxDownloads}`);
+      if (isOneTime) addLog(`ONE-TIME DOWNLOAD: YES`);
+      addLog(`YOUR CODE: ${data.code}`);
       
       setIsUploading(false);
       
       setTimeout(() => {
-        console.log('Navigating to result page:', `/result/${data.code}`);
         setLocation(`/result/${data.code}`);
       }, 800);
     } catch (error: any) {
@@ -311,7 +277,7 @@ export default function Home() {
       xhrRef.current = null;
       
       if (error.message?.includes('cancelled')) {
-        addLog(`UPLOAD_CANCELLED`, 'error');
+        addLog(`UPLOAD CANCELLED`, 'error');
         toast({
           title: "Upload Cancelled",
           description: "The file upload has been stopped.",
