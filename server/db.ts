@@ -1,12 +1,13 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 
-const databaseUrl = process.env.TURSO_DATABASE_URL || "file:local.db";
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required");
+}
 
-const client = createClient({
-  url: databaseUrl,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
 });
 
-export const db = drizzle(client, { schema });
+export const db = drizzle(pool, { schema });

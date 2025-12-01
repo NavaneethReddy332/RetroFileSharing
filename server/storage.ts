@@ -5,8 +5,8 @@ import { eq, lte } from "drizzle-orm";
 export interface IStorage {
   createTransferSession(session: InsertTransferSession): Promise<TransferSession>;
   getSessionByCode(code: string): Promise<TransferSession | undefined>;
-  updateSessionStatus(id: string, status: string): Promise<void>;
-  deleteSession(id: string): Promise<void>;
+  updateSessionStatus(id: number, status: string): Promise<void>;
+  deleteSession(id: number): Promise<void>;
   cleanupExpiredSessions(): Promise<void>;
 }
 
@@ -62,11 +62,11 @@ export class DatabaseStorage implements IStorage {
     return session;
   }
 
-  async updateSessionStatus(id: string, status: string): Promise<void> {
+  async updateSessionStatus(id: number, status: string): Promise<void> {
     await db.update(transferSessions).set({ status }).where(eq(transferSessions.id, id));
   }
 
-  async deleteSession(id: string): Promise<void> {
+  async deleteSession(id: number): Promise<void> {
     await db.delete(transferSessions).where(eq(transferSessions.id, id));
   }
 
