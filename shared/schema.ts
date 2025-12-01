@@ -2,63 +2,22 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
-
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
-
-export const files = sqliteTable("files", {
+export const transferSessions = sqliteTable("transfer_sessions", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   code: text("code").notNull().unique(),
-  filename: text("filename").notNull(),
-  originalName: text("original_name").notNull(),
-  size: integer("size").notNull(),
-  mimetype: text("mimetype").notNull(),
-  uploadedAt: integer("uploaded_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-  
-  b2FileId: text("b2_file_id"),
-  
-  passwordHash: text("password_hash"),
-  isPasswordProtected: integer("is_password_protected").notNull().default(0),
-  downloadCount: integer("download_count").notNull().default(0),
-  maxDownloads: integer("max_downloads"),
-  isOneTime: integer("is_one_time").notNull().default(0),
-});
-
-export const insertFileSchema = createInsertSchema(files).omit({
-  id: true,
-  uploadedAt: true,
-  downloadCount: true,
-});
-
-export type InsertFile = z.infer<typeof insertFileSchema>;
-export type File = typeof files.$inferSelect;
-
-export const guestbookEntries = sqliteTable("guestbook_entries", {
-  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  displayName: text("display_name").notNull(),
-  message: text("message").notNull(),
-  location: text("location"),
-  favoriteSystem: text("favorite_system"),
+  fileName: text("file_name").notNull(),
+  fileSize: integer("file_size").notNull(),
+  mimeType: text("mime_type").notNull(),
+  status: text("status").notNull().default("waiting"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
-  isApproved: integer("is_approved").notNull().default(1),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
 
-export const insertGuestbookEntrySchema = createInsertSchema(guestbookEntries).omit({
+export const insertTransferSessionSchema = createInsertSchema(transferSessions).omit({
   id: true,
   createdAt: true,
-  isApproved: true,
+  status: true,
 });
 
-export type InsertGuestbookEntry = z.infer<typeof insertGuestbookEntrySchema>;
-export type GuestbookEntry = typeof guestbookEntries.$inferSelect;
+export type InsertTransferSession = z.infer<typeof insertTransferSessionSchema>;
+export type TransferSession = typeof transferSessions.$inferSelect;
