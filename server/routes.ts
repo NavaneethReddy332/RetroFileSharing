@@ -7,7 +7,7 @@ import { insertTransferSessionSchema } from "@shared/schema";
 interface TransferRoom {
   sender?: WebSocket;
   receiver?: WebSocket;
-  sessionId: string;
+  sessionId: number;
   fileName: string;
   fileSize: number;
   mimeType: string;
@@ -110,7 +110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             room.sender = ws;
             ws.send(JSON.stringify({ type: "joined", role: "sender" }));
 
-            if (room.receiver) {
+            if (room.receiver && room.sender) {
               room.sender.send(JSON.stringify({ type: "peer-connected" }));
               room.receiver.send(JSON.stringify({ type: "peer-connected" }));
             }
@@ -147,7 +147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               mimeType: room.mimeType,
             }));
 
-            if (room.sender) {
+            if (room.sender && room.receiver) {
               room.sender.send(JSON.stringify({ type: "peer-connected" }));
               room.receiver.send(JSON.stringify({ type: "peer-connected" }));
             }

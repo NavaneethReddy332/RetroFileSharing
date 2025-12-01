@@ -47,56 +47,65 @@ export function RetroLayout({ children }: RetroLayoutProps) {
         </div>
       </header>
 
-      {isMenuOpen && (
-        <div
-          className="fixed inset-0 backdrop-blur-sm z-50"
-          style={{ backgroundColor: 'color-mix(in srgb, hsl(var(--terminal-bg)) 80%, transparent)' }}
-          onClick={() => setIsMenuOpen(false)}
-          data-testid="menu-overlay"
+      <div
+        className={`fixed inset-0 backdrop-blur-sm z-50 transition-opacity duration-300 ${isMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        style={{ backgroundColor: 'color-mix(in srgb, hsl(var(--terminal-bg)) 80%, transparent)' }}
+        onClick={() => setIsMenuOpen(false)}
+        data-testid="menu-overlay"
+      >
+        <nav
+          className={`fixed top-0 right-0 h-full w-64 border-l-4 shadow-2xl transition-transform duration-300 ease-out ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+          style={{ 
+            backgroundColor: 'hsl(var(--header-bg))',
+            borderColor: 'hsl(var(--header-border))'
+          }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <nav
-            className="fixed top-0 right-0 h-full w-64 border-l-4 shadow-2xl"
-            style={{ 
-              backgroundColor: 'hsl(var(--header-bg))',
-              borderColor: 'hsl(var(--header-border))'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 flex flex-col gap-4">
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-retro text-lg" style={{ color: 'hsl(var(--header-text))' }}>MENU</span>
-                <button
-                  onClick={() => setIsMenuOpen(false)}
-                  className="text-2xl hover:opacity-70"
-                  style={{ color: 'hsl(var(--header-text))' }}
-                  data-testid="button-close-menu"
-                >
-                  X
-                </button>
-              </div>
-              
-              <Link
-                href="/"
-                className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70"
-                style={{ color: 'hsl(var(--header-text))' }}
+          <div className="p-6 flex flex-col gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <span className="font-retro text-lg" style={{ color: 'hsl(var(--header-text))' }}>MENU</span>
+              <button
                 onClick={() => setIsMenuOpen(false)}
-                data-testid="link-home"
+                className="relative w-8 h-8 flex items-center justify-center hover:opacity-70 transition-all duration-300 group"
+                data-testid="button-close-menu"
+                aria-label="Close menu"
               >
-                [ SEND ]
-              </Link>
-              <Link
-                href="/receive"
-                className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70"
-                style={{ color: 'hsl(var(--header-text))' }}
-                onClick={() => setIsMenuOpen(false)}
-                data-testid="link-receive"
-              >
-                [ RECEIVE ]
-              </Link>
+                <span 
+                  className="absolute block w-6 h-0.5 rotate-45 transition-all duration-300 group-hover:rotate-[60deg] group-hover:scale-110"
+                  style={{ backgroundColor: '#ff5555' }}
+                />
+                <span 
+                  className="absolute block w-6 h-0.5 -rotate-45 transition-all duration-300 group-hover:-rotate-[60deg] group-hover:scale-110"
+                  style={{ backgroundColor: '#ff5555' }}
+                />
+                <span 
+                  className="absolute w-8 h-8 border-2 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12"
+                  style={{ borderColor: '#ff5555' }}
+                />
+              </button>
             </div>
-          </nav>
-        </div>
-      )}
+            
+            <Link
+              href="/"
+              className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70 transition-all duration-200 hover:translate-x-2"
+              style={{ color: 'hsl(var(--header-text))' }}
+              onClick={() => setIsMenuOpen(false)}
+              data-testid="link-home"
+            >
+              [ SEND ]
+            </Link>
+            <Link
+              href="/receive"
+              className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70 transition-all duration-200 hover:translate-x-2"
+              style={{ color: 'hsl(var(--header-text))' }}
+              onClick={() => setIsMenuOpen(false)}
+              data-testid="link-receive"
+            >
+              [ RECEIVE ]
+            </Link>
+          </div>
+        </nav>
+      </div>
 
       <main 
         className="border-2 p-4 sm:p-6 min-h-[500px]" 

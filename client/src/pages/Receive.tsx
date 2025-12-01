@@ -1,15 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
 import { Download } from "lucide-react";
+import { useSearch } from "wouter";
 
 interface LogEntry {
   id: number;
   message: string;
-  type: 'info' | 'success' | 'error';
+  type: 'info' | 'success' | 'error' | 'warn' | 'system' | 'data';
+  timestamp: Date;
 }
 
 export default function Receive() {
-  const [code, setCode] = useState("");
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const initialCode = urlParams.get('code') || '';
+  
+  const [code, setCode] = useState(initialCode);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete'>('idle');
   const [progress, setProgress] = useState(0);
@@ -17,10 +23,22 @@ export default function Receive() {
   const wsRef = useRef<WebSocket | null>(null);
   const chunksRef = useRef<string[]>([]);
   const logIdRef = useRef(0);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const startTimeRef = useRef<number>(0);
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
-    setLogs(prev => [...prev, { id: logIdRef.current++, message, type }]);
+    setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
   };
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  useEffect(() => {
+    if (initialCode.length === 6) {
+      startReceiving(initialCode);
+    }
+  }, []);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes >= 1024 * 1024 * 1024) {
@@ -32,19 +50,25 @@ export default function Receive() {
     return `${(bytes / 1024).toFixed(2)} KB`;
   };
 
-  const startReceiving = async () => {
-    if (code.length !== 6) {
-      addLog('Please enter a valid 6-digit code', 'error');
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const startReceiving = async (codeToUse?: string) => {
+    const activeCode = codeToUse || code;
+    if (activeCode.length !== 6) {
+      addLog('INVALID: Please enter a valid 6-digit code', 'error');
       return;
     }
 
     setLogs([]);
     setStatus('connecting');
-    addLog('Connecting...');
+    addLog('INIT: Connecting to session...', 'system');
     chunksRef.current = [];
+    startTimeRef.current = Date.now();
 
     try {
-      const response = await fetch(`/api/session/${code}`);
+      const response = await fetch(`/api/session/${activeCode}`);
       
       if (!response.ok) {
         const error = await response.json();
@@ -53,14 +77,16 @@ export default function Receive() {
 
       const session = await response.json();
       setFileInfo({ name: session.fileName, size: session.fileSize });
-      addLog(`Found: ${session.fileName} (${formatFileSize(session.fileSize)})`);
+      addLog(`FILE: ${session.fileName}`, 'success');
+      addLog(`SIZE: ${formatFileSize(session.fileSize)} | TYPE: ${session.mimeType}`, 'data');
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-receiver', code }));
+        ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode }));
+        addLog('WS: Socket connected', 'info');
       };
 
       ws.onmessage = (event) => {
@@ -68,14 +94,16 @@ export default function Receive() {
 
         switch (message.type) {
           case 'joined':
-            addLog('Connected to server');
+            addLog('WS: Joined room as receiver', 'info');
             setStatus('waiting');
-            addLog('Waiting for sender...');
+            addLog('STATUS: Waiting for sender...', 'warn');
             break;
 
           case 'peer-connected':
-            addLog('Sender connected! Ready to receive...', 'success');
+            addLog('PEER: Sender connected!', 'success');
+            addLog('TRANSFER: Ready to receive data...', 'system');
             setStatus('receiving');
+            startTimeRef.current = Date.now();
             break;
 
           case 'chunk':
@@ -83,40 +111,50 @@ export default function Receive() {
             const percent = Math.round(((message.index + 1) / message.total) * 100);
             setProgress(percent);
             
+            if ((message.index + 1) % 10 === 0 || message.index + 1 === message.total) {
+              const elapsed = (Date.now() - startTimeRef.current) / 1000;
+              const received = chunksRef.current.filter(Boolean).length;
+              const avgSize = fileInfo ? fileInfo.size / message.total : 0;
+              const speed = (received * avgSize) / elapsed / 1024 / 1024;
+              addLog(`RECV: ${percent}% | ${speed.toFixed(2)} MB/s`, 'data');
+            }
+            
             ws.send(JSON.stringify({ type: 'progress', percent }));
             break;
 
           case 'transfer-complete':
-            addLog('Download complete! Saving file...', 'success');
+            const totalTime = (Date.now() - startTimeRef.current) / 1000;
+            addLog(`COMPLETE: Transfer finished in ${totalTime.toFixed(2)}s`, 'success');
+            addLog('SAVE: Processing file...', 'system');
             saveFile();
             setStatus('complete');
             break;
 
           case 'peer-disconnected':
-            addLog('Sender disconnected', 'error');
+            addLog('ERROR: Sender disconnected', 'error');
             setStatus('idle');
             break;
 
           case 'error':
-            addLog(`Error: ${message.error}`, 'error');
+            addLog(`ERROR: ${message.error}`, 'error');
             setStatus('idle');
             break;
         }
       };
 
       ws.onerror = () => {
-        addLog('Connection error', 'error');
+        addLog('WS_ERROR: Connection failed', 'error');
         setStatus('idle');
       };
 
       ws.onclose = () => {
         if (status !== 'complete') {
-          addLog('Connection closed');
+          addLog('WS: Connection closed', 'warn');
         }
       };
 
     } catch (error: any) {
-      addLog(`Error: ${error.message}`, 'error');
+      addLog(`FATAL: ${error.message}`, 'error');
       setStatus('idle');
     }
   };
@@ -125,6 +163,7 @@ export default function Receive() {
     if (!fileInfo || chunksRef.current.length === 0) return;
 
     try {
+      addLog('DECODE: Converting binary data...', 'system');
       const binaryChunks = chunksRef.current.map(base64 => {
         const binaryString = atob(base64);
         const bytes = new Uint8Array(binaryString.length);
@@ -145,9 +184,10 @@ export default function Receive() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      addLog('File saved!', 'success');
+      addLog(`SAVED: ${fileInfo.name}`, 'success');
+      addLog(`SIZE: ${formatFileSize(blob.size)}`, 'data');
     } catch (error: any) {
-      addLog(`Save error: ${error.message}`, 'error');
+      addLog(`SAVE_ERROR: ${error.message}`, 'error');
     }
   };
 
@@ -171,6 +211,28 @@ export default function Receive() {
       }
     };
   }, []);
+
+  const getLogColor = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '#ff5555';
+      case 'success': return '#50fa7b';
+      case 'warn': return '#f1fa8c';
+      case 'system': return '#bd93f9';
+      case 'data': return '#8be9fd';
+      default: return '#f8f8f2';
+    }
+  };
+
+  const getLogPrefix = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '[ERR]';
+      case 'success': return '[OK!]';
+      case 'warn': return '[WRN]';
+      case 'system': return '[SYS]';
+      case 'data': return '[DAT]';
+      default: return '[INF]';
+    }
+  };
 
   return (
     <RetroLayout>
@@ -209,7 +271,7 @@ export default function Receive() {
             </div>
 
             <button
-              onClick={startReceiving}
+              onClick={() => startReceiving()}
               disabled={code.length !== 6}
               className="retro-button w-full py-3 text-lg"
               style={{ opacity: code.length === 6 ? 1 : 0.5 }}
@@ -268,7 +330,7 @@ export default function Receive() {
                   style={{
                     backgroundColor: 'hsl(var(--accent))',
                     width: `${progress}%`,
-                    transition: 'width 0.3s ease'
+                    transition: 'width 0.1s linear'
                   }}
                 />
               </div>
@@ -300,19 +362,24 @@ export default function Receive() {
         )}
 
         {logs.length > 0 && (
-          <div className="mt-6 retro-border-inset p-3 max-h-48 overflow-y-auto font-mono text-sm">
+          <div 
+            className="mt-6 retro-border-inset p-3 max-h-64 overflow-y-auto font-mono text-xs retro-terminal-scroll"
+            style={{ backgroundColor: '#1e1e2e' }}
+          >
             {logs.map((log) => (
               <div
                 key={log.id}
-                style={{
-                  color: log.type === 'error' ? 'hsl(var(--destructive))' :
-                         log.type === 'success' ? 'hsl(var(--accent))' :
-                         'hsl(var(--text-secondary))'
-                }}
+                className="flex gap-2 py-0.5"
+                style={{ fontFamily: 'Consolas, Monaco, monospace' }}
               >
-                {'>'} {log.message}
+                <span style={{ color: '#6272a4' }}>[{formatTime(log.timestamp)}]</span>
+                <span style={{ color: getLogColor(log.type), fontWeight: 'bold' }}>
+                  {getLogPrefix(log.type)}
+                </span>
+                <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
               </div>
             ))}
+            <div ref={logsEndRef} />
           </div>
         )}
       </div>

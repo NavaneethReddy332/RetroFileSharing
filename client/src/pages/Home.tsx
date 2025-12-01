@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload } from "lucide-react";
+import { Upload, Download } from "lucide-react";
+import { useLocation } from "wouter";
 
 interface LogEntry {
   id: number;
   message: string;
-  type: 'info' | 'success' | 'error';
+  type: 'info' | 'success' | 'error' | 'warn' | 'system' | 'data';
+  timestamp: Date;
 }
 
 export default function Home() {
@@ -15,13 +17,20 @@ export default function Home() {
   const [status, setStatus] = useState<'idle' | 'waiting' | 'connected' | 'transferring' | 'complete'>('idle');
   const [progress, setProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [receiveCode, setReceiveCode] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
-    setLogs(prev => [...prev, { id: logIdRef.current++, message, type }]);
+    setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
   };
+
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes >= 1024 * 1024 * 1024) {
@@ -33,11 +42,16 @@ export default function Home() {
     return `${(bytes / 1024).toFixed(2)} KB`;
   };
 
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
-      addLog(`Selected: ${selectedFile.name} (${formatFileSize(selectedFile.size)})`);
+      addLog(`FILE_SELECT: ${selectedFile.name}`, 'system');
+      addLog(`SIZE: ${formatFileSize(selectedFile.size)} | TYPE: ${selectedFile.type || 'unknown'}`, 'data');
     }
   };
 
@@ -57,7 +71,8 @@ export default function Home() {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const droppedFile = e.dataTransfer.files[0];
       setFile(droppedFile);
-      addLog(`Selected: ${droppedFile.name} (${formatFileSize(droppedFile.size)})`);
+      addLog(`FILE_DROP: ${droppedFile.name}`, 'system');
+      addLog(`SIZE: ${formatFileSize(droppedFile.size)} | TYPE: ${droppedFile.type || 'unknown'}`, 'data');
     }
   };
 
@@ -65,7 +80,7 @@ export default function Home() {
     if (!file) return;
 
     setLogs([]);
-    addLog('Creating transfer session...');
+    addLog('INIT: Creating transfer session...', 'system');
 
     try {
       const response = await fetch('/api/session', {
@@ -85,8 +100,8 @@ export default function Home() {
       const data = await response.json();
       setCode(data.code);
       setStatus('waiting');
-      addLog(`Your code: ${data.code}`, 'success');
-      addLog('Waiting for receiver to connect...');
+      addLog(`SESSION_ID: ${data.code}`, 'success');
+      addLog('STATUS: Waiting for receiver connection...', 'warn');
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -94,6 +109,7 @@ export default function Home() {
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'join-sender', code: data.code }));
+        addLog('WS: Socket connected', 'info');
       };
 
       ws.onmessage = async (event) => {
@@ -101,11 +117,12 @@ export default function Home() {
 
         switch (message.type) {
           case 'joined':
-            addLog('Connected to server');
+            addLog('WS: Joined room as sender', 'info');
             break;
 
           case 'peer-connected':
-            addLog('Receiver connected! Starting transfer...', 'success');
+            addLog('PEER: Receiver connected!', 'success');
+            addLog('TRANSFER: Initiating high-speed transfer...', 'system');
             setStatus('transferring');
             await sendFile(ws);
             break;
@@ -115,35 +132,35 @@ export default function Home() {
             break;
 
           case 'transfer-complete':
-            addLog('Transfer complete!', 'success');
+            addLog('COMPLETE: Transfer successful!', 'success');
             setStatus('complete');
             break;
 
           case 'peer-disconnected':
-            addLog('Receiver disconnected', 'error');
+            addLog('ERROR: Receiver disconnected', 'error');
             setStatus('idle');
             break;
 
           case 'error':
-            addLog(`Error: ${message.error}`, 'error');
+            addLog(`ERROR: ${message.error}`, 'error');
             setStatus('idle');
             break;
         }
       };
 
       ws.onerror = () => {
-        addLog('Connection error', 'error');
+        addLog('WS_ERROR: Connection failed', 'error');
         setStatus('idle');
       };
 
       ws.onclose = () => {
         if (status !== 'complete') {
-          addLog('Connection closed');
+          addLog('WS: Connection closed', 'warn');
         }
       };
 
     } catch (error: any) {
-      addLog(`Error: ${error.message}`, 'error');
+      addLog(`FATAL: ${error.message}`, 'error');
       setStatus('idle');
     }
   };
@@ -151,46 +168,71 @@ export default function Home() {
   const sendFile = async (ws: WebSocket) => {
     if (!file) return;
 
-    const CHUNK_SIZE = 64 * 1024;
+    const CHUNK_SIZE = 256 * 1024;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const startTime = Date.now();
     
-    addLog(`Sending ${totalChunks} chunks...`);
+    addLog(`CHUNKS: ${totalChunks} x ${formatFileSize(CHUNK_SIZE)}`, 'data');
+    addLog('TRANSFER: High-speed streaming...', 'system');
 
-    const reader = new FileReader();
-    let currentChunk = 0;
-
-    const sendNextChunk = () => {
-      const start = currentChunk * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const blob = file.slice(start, end);
-
-      reader.onload = (e) => {
-        if (e.target?.result && ws.readyState === WebSocket.OPEN) {
-          const base64 = (e.target.result as string).split(',')[1];
-          
-          ws.send(JSON.stringify({
-            type: 'chunk',
-            data: base64,
-            index: currentChunk,
-            total: totalChunks,
-          }));
-
-          currentChunk++;
-          const percent = Math.round((currentChunk / totalChunks) * 100);
-          setProgress(percent);
-
-          if (currentChunk < totalChunks) {
-            setTimeout(sendNextChunk, 10);
+    const sendChunk = (chunkIndex: number): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const blob = file.slice(start, end);
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result && ws.readyState === WebSocket.OPEN) {
+            const arrayBuffer = e.target.result as ArrayBuffer;
+            const uint8 = new Uint8Array(arrayBuffer);
+            let binary = '';
+            const len = uint8.byteLength;
+            for (let i = 0; i < len; i++) {
+              binary += String.fromCharCode(uint8[i]);
+            }
+            const base64 = btoa(binary);
+            
+            ws.send(JSON.stringify({
+              type: 'chunk',
+              data: base64,
+              index: chunkIndex,
+              total: totalChunks,
+            }));
+            resolve();
           } else {
-            ws.send(JSON.stringify({ type: 'transfer-complete' }));
+            reject(new Error('WebSocket closed'));
           }
-        }
-      };
-
-      reader.readAsDataURL(blob);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(blob);
+      });
     };
 
-    sendNextChunk();
+    let lastLogTime = startTime;
+    
+    for (let i = 0; i < totalChunks; i++) {
+      await sendChunk(i);
+      
+      const percent = Math.round(((i + 1) / totalChunks) * 100);
+      setProgress(percent);
+      
+      const now = Date.now();
+      if (now - lastLogTime > 500 || i === totalChunks - 1) {
+        const elapsed = (now - startTime) / 1000;
+        const bytesSent = (i + 1) * CHUNK_SIZE;
+        const speed = bytesSent / elapsed / 1024 / 1024;
+        addLog(`STREAM: ${percent}% @ ${speed.toFixed(1)} MB/s`, 'data');
+        lastLogTime = now;
+      }
+    }
+    
+    const totalTime = (Date.now() - startTime) / 1000;
+    const avgSpeed = file.size / totalTime / 1024 / 1024;
+    addLog(`COMPLETE: ${formatFileSize(file.size)} in ${totalTime.toFixed(2)}s`, 'success');
+    addLog(`THROUGHPUT: ${avgSpeed.toFixed(2)} MB/s`, 'data');
+    
+    ws.send(JSON.stringify({ type: 'transfer-complete' }));
   };
 
   const resetSender = () => {
@@ -205,6 +247,12 @@ export default function Home() {
     setLogs([]);
   };
 
+  const handleReceiveSubmit = () => {
+    if (receiveCode.length === 6) {
+      navigate(`/receive?code=${receiveCode}`);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (wsRef.current) {
@@ -212,6 +260,28 @@ export default function Home() {
       }
     };
   }, []);
+
+  const getLogColor = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '#ff5555';
+      case 'success': return '#50fa7b';
+      case 'warn': return '#f1fa8c';
+      case 'system': return '#bd93f9';
+      case 'data': return '#8be9fd';
+      default: return '#f8f8f2';
+    }
+  };
+
+  const getLogPrefix = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '[ERR]';
+      case 'success': return '[OK!]';
+      case 'warn': return '[WRN]';
+      case 'system': return '[SYS]';
+      case 'data': return '[DAT]';
+      default: return '[INF]';
+    }
+  };
 
   return (
     <RetroLayout>
@@ -277,6 +347,35 @@ export default function Home() {
             >
               {file ? 'Generate Code >>' : 'Select a file first'}
             </button>
+
+            <div className="mt-8 pt-6" style={{ borderTop: '2px solid hsl(var(--border-shadow))' }}>
+              <div className="text-center mb-4">
+                <h2 className="text-lg font-bold" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  or Receive a File
+                </h2>
+              </div>
+              <div className="retro-border p-4 flex flex-col sm:flex-row gap-3 items-center justify-center">
+                <Download size={24} style={{ color: 'hsl(var(--text-secondary))' }} />
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={receiveCode}
+                  onChange={(e) => setReceiveCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter code"
+                  className="retro-input text-center text-xl font-mono tracking-widest w-36"
+                  data-testid="input-receive-code-home"
+                />
+                <button
+                  onClick={handleReceiveSubmit}
+                  disabled={receiveCode.length !== 6}
+                  className="retro-button px-4 py-2"
+                  style={{ opacity: receiveCode.length === 6 ? 1 : 0.5 }}
+                  data-testid="button-receive-home"
+                >
+                  Receive
+                </button>
+              </div>
+            </div>
           </>
         )}
 
@@ -317,7 +416,7 @@ export default function Home() {
                   style={{ 
                     backgroundColor: 'hsl(var(--accent))',
                     width: `${progress}%`,
-                    transition: 'width 0.3s ease'
+                    transition: 'width 0.1s linear'
                   }}
                 />
               </div>
@@ -349,19 +448,24 @@ export default function Home() {
         )}
 
         {logs.length > 0 && (
-          <div className="mt-6 retro-border-inset p-3 max-h-48 overflow-y-auto font-mono text-sm">
+          <div 
+            className="mt-6 retro-border-inset p-3 max-h-64 overflow-y-auto font-mono text-xs retro-terminal-scroll"
+            style={{ backgroundColor: '#1e1e2e' }}
+          >
             {logs.map((log) => (
               <div
                 key={log.id}
-                style={{
-                  color: log.type === 'error' ? 'hsl(var(--destructive))' :
-                         log.type === 'success' ? 'hsl(var(--accent))' :
-                         'hsl(var(--text-secondary))'
-                }}
+                className="flex gap-2 py-0.5"
+                style={{ fontFamily: 'Consolas, Monaco, monospace' }}
               >
-                {'>'} {log.message}
+                <span style={{ color: '#6272a4' }}>[{formatTime(log.timestamp)}]</span>
+                <span style={{ color: getLogColor(log.type), fontWeight: 'bold' }}>
+                  {getLogPrefix(log.type)}
+                </span>
+                <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
               </div>
             ))}
+            <div ref={logsEndRef} />
           </div>
         )}
       </div>
