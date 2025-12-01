@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Download, Check, AlertCircle } from "lucide-react";
+import { Download } from "lucide-react";
 import { useSearch } from "wouter";
 
-type ReceiveStatus = 'idle' | 'connecting' | 'connected' | 'receiving' | 'complete' | 'error';
+interface LogEntry {
+  id: number;
+  message: string;
+  type: 'info' | 'success' | 'error' | 'warn' | 'system' | 'data';
+  timestamp: Date;
+}
 
 export default function Receive() {
   const searchString = useSearch();
@@ -11,28 +16,23 @@ export default function Receive() {
   const initialCode = urlParams.get('code') || '';
   
   const [code, setCode] = useState(initialCode);
-  const [status, setStatus] = useState<ReceiveStatus>('idle');
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete'>('idle');
   const [progress, setProgress] = useState(0);
-  const [speed, setSpeed] = useState(0);
-  const [fileName, setFileName] = useState("");
-  const [fileSize, setFileSize] = useState(0);
-  const [statusText, setStatusText] = useState("");
+  const [fileInfo, setFileInfo] = useState<{ name: string; size: number } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const chunksRef = useRef<string[]>([]);
+  const logIdRef = useRef(0);
+  const logsEndRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(0);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)}GB`;
-    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-    return `${(bytes / 1024).toFixed(1)}KB`;
+  const addLog = (message: string, type: LogEntry['type'] = 'info') => {
+    setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
   };
 
-  const generateProgressBar = (percent: number): string => {
-    const totalBlocks = 20;
-    const filled = Math.round((percent / 100) * totalBlocks);
-    const empty = totalBlocks - filled;
-    return '\u2588'.repeat(filled) + '\u2591'.repeat(empty);
-  };
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
 
   useEffect(() => {
     if (initialCode.length === 6) {
@@ -40,13 +40,32 @@ export default function Receive() {
     }
   }, []);
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    }
+    if (bytes >= 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  };
+
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   const startReceiving = async (codeToUse?: string) => {
     const activeCode = codeToUse || code;
-    if (activeCode.length !== 6) return;
+    if (activeCode.length !== 6) {
+      addLog('INVALID: Please enter a valid 6-digit code', 'error');
+      return;
+    }
 
+    setLogs([]);
     setStatus('connecting');
-    setStatusText("Connecting...");
+    addLog('INIT: Connecting to session...', 'system');
     chunksRef.current = [];
+    startTimeRef.current = Date.now();
 
     try {
       const response = await fetch(`/api/session/${activeCode}`);
@@ -57,8 +76,9 @@ export default function Receive() {
       }
 
       const session = await response.json();
-      setFileName(session.fileName);
-      setFileSize(session.fileSize);
+      setFileInfo({ name: session.fileName, size: session.fileSize });
+      addLog(`FILE: ${session.fileName}`, 'success');
+      addLog(`SIZE: ${formatFileSize(session.fileSize)} | TYPE: ${session.mimeType}`, 'data');
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -66,7 +86,7 @@ export default function Receive() {
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode }));
-        setStatusText("Waiting for sender...");
+        addLog('WS: Socket connected', 'info');
       };
 
       ws.onmessage = (event) => {
@@ -74,14 +94,15 @@ export default function Receive() {
 
         switch (message.type) {
           case 'joined':
-            setStatus('connected');
-            setFileName(message.fileName);
-            setFileSize(message.fileSize);
+            addLog('WS: Joined room as receiver', 'info');
+            setStatus('waiting');
+            addLog('STATUS: Waiting for sender...', 'warn');
             break;
 
           case 'peer-connected':
+            addLog('PEER: Sender connected!', 'success');
+            addLog('TRANSFER: Ready to receive data...', 'system');
             setStatus('receiving');
-            setStatusText("Receiving...");
             startTimeRef.current = Date.now();
             break;
 
@@ -90,48 +111,59 @@ export default function Receive() {
             const percent = Math.round(((message.index + 1) / message.total) * 100);
             setProgress(percent);
             
-            const elapsed = (Date.now() - startTimeRef.current) / 1000;
-            if (elapsed > 0) {
-              const bytesReceived = (message.index + 1) * 256 * 1024;
-              setSpeed(bytesReceived / elapsed / 1024 / 1024);
+            if ((message.index + 1) % 10 === 0 || message.index + 1 === message.total) {
+              const elapsed = (Date.now() - startTimeRef.current) / 1000;
+              const received = chunksRef.current.filter(Boolean).length;
+              const avgSize = fileInfo ? fileInfo.size / message.total : 0;
+              const speed = (received * avgSize) / elapsed / 1024 / 1024;
+              addLog(`RECV: ${percent}% | ${speed.toFixed(2)} MB/s`, 'data');
             }
             
             ws.send(JSON.stringify({ type: 'progress', percent }));
             break;
 
           case 'transfer-complete':
-            setStatusText("Processing...");
+            const totalTime = (Date.now() - startTimeRef.current) / 1000;
+            addLog(`COMPLETE: Transfer finished in ${totalTime.toFixed(2)}s`, 'success');
+            addLog('SAVE: Processing file...', 'system');
             saveFile();
             setStatus('complete');
             break;
 
           case 'peer-disconnected':
-            setStatusText("Sender disconnected");
-            setStatus('error');
+            addLog('ERROR: Sender disconnected', 'error');
+            setStatus('idle');
             break;
 
           case 'error':
-            setStatusText(message.error);
-            setStatus('error');
+            addLog(`ERROR: ${message.error}`, 'error');
+            setStatus('idle');
             break;
         }
       };
 
       ws.onerror = () => {
-        setStatusText("Connection failed");
-        setStatus('error');
+        addLog('WS_ERROR: Connection failed', 'error');
+        setStatus('idle');
+      };
+
+      ws.onclose = () => {
+        if (status !== 'complete') {
+          addLog('WS: Connection closed', 'warn');
+        }
       };
 
     } catch (error: any) {
-      setStatusText(error.message);
-      setStatus('error');
+      addLog(`FATAL: ${error.message}`, 'error');
+      setStatus('idle');
     }
   };
 
   const saveFile = () => {
-    if (!fileName || chunksRef.current.length === 0) return;
+    if (!fileInfo || chunksRef.current.length === 0) return;
 
     try {
+      addLog('DECODE: Converting binary data...', 'system');
       const binaryChunks = chunksRef.current.map(base64 => {
         const binaryString = atob(base64);
         const bytes = new Uint8Array(binaryString.length);
@@ -146,20 +178,20 @@ export default function Receive() {
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = fileName;
+      a.download = fileInfo.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      setStatusText("Download complete!");
+      addLog(`SAVED: ${fileInfo.name}`, 'success');
+      addLog(`SIZE: ${formatFileSize(blob.size)}`, 'data');
     } catch (error: any) {
-      setStatusText("Failed to save file");
-      setStatus('error');
+      addLog(`SAVE_ERROR: ${error.message}`, 'error');
     }
   };
 
-  const reset = () => {
+  const resetReceiver = () => {
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -167,172 +199,189 @@ export default function Receive() {
     setCode("");
     setStatus('idle');
     setProgress(0);
-    setSpeed(0);
-    setFileName("");
-    setFileSize(0);
-    setStatusText("");
+    setFileInfo(null);
+    setLogs([]);
     chunksRef.current = [];
   };
 
   useEffect(() => {
     return () => {
-      if (wsRef.current) wsRef.current.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
     };
   }, []);
 
+  const getLogColor = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '#ff5555';
+      case 'success': return '#50fa7b';
+      case 'warn': return '#f1fa8c';
+      case 'system': return '#bd93f9';
+      case 'data': return '#8be9fd';
+      default: return '#f8f8f2';
+    }
+  };
+
+  const getLogPrefix = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'error': return '[ERR]';
+      case 'success': return '[OK!]';
+      case 'warn': return '[WRN]';
+      case 'system': return '[SYS]';
+      case 'data': return '[DAT]';
+      default: return '[INF]';
+    }
+  };
+
   return (
     <RetroLayout>
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="text-center animate-fade-in">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <Download className="w-6 h-6 text-accent" />
-            <h1 className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-accent">
-              RECEIVE FILE
-            </h1>
-          </div>
-          <p className="text-sm font-mono text-muted-foreground">
-            Enter the 6-digit code from sender
+      <div className="max-w-xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2" style={{ color: 'hsl(var(--accent))' }}>
+            Receive Files
+          </h1>
+          <p style={{ color: 'hsl(var(--text-secondary))' }}>
+            Enter the 6-digit code from the sender to receive a file.
           </p>
         </div>
 
-        {/* Main Content */}
-        <div className="panel-container">
-          {status === 'idle' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="tech-panel p-6">
-                <div className="font-mono text-xs text-muted-foreground mb-3 text-center">
-                  ENTER TRANSFER CODE
-                </div>
+        {status === 'idle' && (
+          <>
+            <div className="retro-border p-6 mb-4 text-center">
+              <Download
+                size={48}
+                className="mx-auto mb-4"
+                style={{ color: 'hsl(var(--text-secondary))' }}
+              />
+              <div className="mb-4">
+                <label className="block mb-2" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  Enter Code:
+                </label>
                 <input
                   type="text"
                   maxLength={6}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
-                  className="tech-input w-full text-center font-mono text-3xl tracking-[0.4em] py-4 placeholder:tracking-[0.4em] placeholder:text-muted-foreground/30"
+                  className="retro-input text-center text-3xl font-mono tracking-widest w-48"
                   data-testid="input-code"
                 />
               </div>
-
-              <button
-                onClick={() => startReceiving()}
-                disabled={code.length !== 6}
-                className={`tech-button w-full py-3 font-mono text-sm transition-all duration-300 ${
-                  code.length === 6 ? 'hover:scale-[1.02]' : 'opacity-40 cursor-not-allowed'
-                }`}
-                data-testid="button-receive"
-              >
-                CONNECT
-              </button>
             </div>
-          )}
 
-          {(status === 'connecting' || status === 'connected') && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="tech-panel p-6 text-center">
-                <div className="font-mono text-xs text-muted-foreground mb-4">
-                  {statusText}
-                </div>
-                {fileName && (
-                  <div className="tech-panel-inset p-3">
-                    <div className="font-mono text-sm text-accent truncate">
-                      {fileName}
-                    </div>
-                    <div className="font-mono text-xs text-muted-foreground mt-1">
-                      {formatFileSize(fileSize)}
-                    </div>
-                  </div>
-                )}
-                <div className="mt-4">
-                  <div className="inline-block w-4 h-4 border-2 border-accent border-t-transparent animate-spin" />
-                </div>
+            <button
+              onClick={() => startReceiving()}
+              disabled={code.length !== 6}
+              className="retro-button w-full py-3 text-lg"
+              style={{ opacity: code.length === 6 ? 1 : 0.5 }}
+              data-testid="button-receive"
+            >
+              {code.length === 6 ? 'Connect >>' : 'Enter 6-digit code'}
+            </button>
+          </>
+        )}
+
+        {status === 'connecting' && (
+          <div className="text-center">
+            <div className="retro-border p-6">
+              <div style={{ color: 'hsl(var(--text-secondary))' }}>
+                Connecting...
               </div>
-
-              <button
-                onClick={reset}
-                className="tech-button-outline w-full py-2 font-mono text-xs"
-                data-testid="button-cancel"
-              >
-                CANCEL
-              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {status === 'receiving' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="tech-panel p-6">
-                <div className="font-mono text-xs text-muted-foreground mb-2 text-center">
-                  DOWNLOADING
-                </div>
-                <div className="font-mono text-sm text-accent truncate text-center mb-4">
-                  {fileName}
-                </div>
-
-                {/* Single Line Progress Bar */}
-                <div className="tech-panel-inset p-3">
-                  <div className="font-mono text-xs flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground w-12">{progress}%</span>
-                    <span className="text-accent flex-1 text-center tracking-tight overflow-hidden">
-                      [{generateProgressBar(progress)}]
-                    </span>
-                    <span className="text-muted-foreground w-16 text-right">
-                      {speed.toFixed(1)}MB/s
-                    </span>
+        {status === 'waiting' && (
+          <div className="text-center">
+            <div className="retro-border p-6 mb-4">
+              {fileInfo && (
+                <div className="mb-4">
+                  <div style={{ color: 'hsl(var(--accent))' }}>File ready:</div>
+                  <div className="font-bold text-lg">{fileInfo.name}</div>
+                  <div style={{ color: 'hsl(var(--text-secondary))' }}>
+                    {formatFileSize(fileInfo.size)}
                   </div>
                 </div>
+              )}
+              <div style={{ color: 'hsl(var(--text-secondary))' }}>
+                Waiting for sender to start transfer...
               </div>
             </div>
-          )}
+            <button
+              onClick={resetReceiver}
+              className="retro-button"
+              data-testid="button-cancel"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
-          {status === 'complete' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="tech-panel p-6 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Check className="w-5 h-5 text-green-500" />
-                  <span className="font-mono text-sm text-green-500">
-                    DOWNLOAD COMPLETE
-                  </span>
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">
-                  {fileName}
-                </div>
+        {status === 'receiving' && (
+          <div className="text-center">
+            <div className="retro-border p-6 mb-4">
+              <div className="mb-4" style={{ color: 'hsl(var(--accent))' }}>
+                Receiving: {fileInfo?.name}
               </div>
+              <div className="retro-border-inset p-2 mb-2">
+                <div
+                  className="h-6"
+                  style={{
+                    backgroundColor: 'hsl(var(--accent))',
+                    width: `${progress}%`,
+                    transition: 'width 0.1s linear'
+                  }}
+                />
+              </div>
+              <div className="font-mono" style={{ color: 'hsl(var(--text-secondary))' }}>
+                {progress}%
+              </div>
+            </div>
+          </div>
+        )}
 
-              <button
-                onClick={reset}
-                className="tech-button w-full py-3 font-mono text-sm"
-                data-testid="button-receive-another"
+        {status === 'complete' && (
+          <div className="text-center">
+            <div className="retro-border p-6 mb-4">
+              <div className="text-2xl font-bold mb-2" style={{ color: 'hsl(var(--accent))' }}>
+                Download Complete!
+              </div>
+              <div style={{ color: 'hsl(var(--text-secondary))' }}>
+                {fileInfo?.name} has been downloaded.
+              </div>
+            </div>
+            <button
+              onClick={resetReceiver}
+              className="retro-button"
+              data-testid="button-receive-another"
+            >
+              Receive Another File
+            </button>
+          </div>
+        )}
+
+        {logs.length > 0 && (
+          <div 
+            className="mt-6 retro-border-inset p-3 max-h-64 overflow-y-auto font-mono text-xs retro-terminal-scroll"
+            style={{ backgroundColor: '#1e1e2e' }}
+          >
+            {logs.map((log) => (
+              <div
+                key={log.id}
+                className="flex gap-2 py-0.5"
+                style={{ fontFamily: 'Consolas, Monaco, monospace' }}
               >
-                RECEIVE ANOTHER FILE
-              </button>
-            </div>
-          )}
-
-          {status === 'error' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="tech-panel p-6 text-center border-red-500/50">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
-                  <span className="font-mono text-sm text-red-500">
-                    ERROR
-                  </span>
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">
-                  {statusText}
-                </div>
+                <span style={{ color: '#6272a4' }}>[{formatTime(log.timestamp)}]</span>
+                <span style={{ color: getLogColor(log.type), fontWeight: 'bold' }}>
+                  {getLogPrefix(log.type)}
+                </span>
+                <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
               </div>
-
-              <button
-                onClick={reset}
-                className="tech-button w-full py-3 font-mono text-sm"
-                data-testid="button-try-again"
-              >
-                TRY AGAIN
-              </button>
-            </div>
-          )}
-        </div>
+            ))}
+            <div ref={logsEndRef} />
+          </div>
+        )}
       </div>
     </RetroLayout>
   );

@@ -1,6 +1,5 @@
 import { Link } from 'wouter';
 import { useState } from 'react';
-import { Zap } from 'lucide-react';
 
 interface RetroLayoutProps {
   children: React.ReactNode;
@@ -10,102 +9,115 @@ export function RetroLayout({ children }: RetroLayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'hsl(var(--surface))' }}>
-      {/* Header */}
-      <header className="border-b-2 border-accent/30 bg-black/50 backdrop-blur-sm sticky top-0 z-40">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/" className="no-underline flex items-center gap-2 group">
-            <Zap className="w-5 h-5 text-accent transition-transform duration-300 group-hover:scale-110" />
-            <span className="font-mono text-sm sm:text-base font-bold tracking-wider text-foreground">
+    <div className="min-h-screen p-2 sm:p-4 w-full" style={{ backgroundColor: 'hsl(var(--surface))' }}>
+      <header className="mb-6">
+        <div 
+          className="border-2 p-3 sm:p-4 flex items-center justify-between font-bold shadow-md" 
+          style={{ backgroundColor: 'hsl(var(--header-bg))', borderColor: 'hsl(var(--header-border))' }}
+        >
+          <Link href="/" className="no-underline">
+            <span 
+              className="text-lg sm:text-xl font-retro tracking-widest" 
+              style={{ color: 'hsl(var(--header-text))' }}
+            >
               QUICKSEND
             </span>
           </Link>
           
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex flex-col gap-1.5 p-2 transition-all duration-300 hover:bg-accent/10"
+            className="flex flex-col gap-1 p-2 hover:bg-white/10 transition-colors border-2"
+            style={{ borderColor: 'hsl(var(--border-highlight))' }}
             aria-label="Toggle menu"
             data-testid="button-hamburger-menu"
           >
             <span
-              className={`block w-5 h-0.5 bg-foreground transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2' : ''}`}
+              className={`block w-6 h-0.5 transition-all duration-300 ${isMenuOpen ? 'rotate-45 translate-y-1.5' : ''}`}
+              style={{ backgroundColor: 'hsl(var(--header-text))' }}
             />
             <span
-              className={`block w-5 h-0.5 bg-foreground transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}
+              className={`block w-6 h-0.5 transition-all duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}
+              style={{ backgroundColor: 'hsl(var(--header-text))' }}
             />
             <span
-              className={`block w-5 h-0.5 bg-foreground transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2' : ''}`}
+              className={`block w-6 h-0.5 transition-all duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-1.5' : ''}`}
+              style={{ backgroundColor: 'hsl(var(--header-text))' }}
             />
           </button>
         </div>
       </header>
 
-      {/* Slide-out Menu */}
       <div
-        className={`fixed inset-0 z-50 transition-all duration-300 ${isMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 backdrop-blur-sm z-50 transition-opacity duration-300 ${isMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        style={{ backgroundColor: 'color-mix(in srgb, hsl(var(--terminal-bg)) 80%, transparent)' }}
         onClick={() => setIsMenuOpen(false)}
         data-testid="menu-overlay"
       >
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
         <nav
-          className={`fixed top-0 right-0 h-full w-64 bg-black border-l border-accent/30 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+          className={`fixed top-0 right-0 h-full w-64 border-l-4 shadow-2xl transition-transform duration-300 ease-out ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
+          style={{ 
+            backgroundColor: 'hsl(var(--header-bg))',
+            borderColor: 'hsl(var(--header-border))'
+          }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-6 space-y-6">
-            <div className="flex justify-between items-center">
-              <span className="font-mono text-xs text-muted-foreground">// NAVIGATION</span>
+          <div className="p-6 flex flex-col gap-4">
+            <div className="flex justify-between items-center mb-4">
+              <span className="font-retro text-lg" style={{ color: 'hsl(var(--header-text))' }}>MENU</span>
               <button
                 onClick={() => setIsMenuOpen(false)}
-                className="w-8 h-8 flex items-center justify-center transition-all duration-300 hover:bg-red-500/20 group"
+                className="relative w-8 h-8 flex items-center justify-center hover:opacity-70 transition-all duration-300 group"
                 data-testid="button-close-menu"
                 aria-label="Close menu"
               >
-                <span className="absolute block w-4 h-0.5 bg-red-500 rotate-45 transition-transform group-hover:scale-110" />
-                <span className="absolute block w-4 h-0.5 bg-red-500 -rotate-45 transition-transform group-hover:scale-110" />
+                <span 
+                  className="absolute block w-6 h-0.5 rotate-45 transition-all duration-300 group-hover:rotate-[60deg] group-hover:scale-110"
+                  style={{ backgroundColor: '#ff5555' }}
+                />
+                <span 
+                  className="absolute block w-6 h-0.5 -rotate-45 transition-all duration-300 group-hover:-rotate-[60deg] group-hover:scale-110"
+                  style={{ backgroundColor: '#ff5555' }}
+                />
+                <span 
+                  className="absolute w-8 h-8 border-2 opacity-0 group-hover:opacity-100 transition-all duration-300 group-hover:rotate-12"
+                  style={{ borderColor: '#ff5555' }}
+                />
               </button>
             </div>
             
-            <div className="space-y-2">
-              <Link
-                href="/"
-                className="block font-mono text-sm py-3 px-4 text-foreground hover:bg-accent/10 hover:text-accent transition-all duration-200 border border-transparent hover:border-accent/30"
-                onClick={() => setIsMenuOpen(false)}
-                data-testid="link-home"
-              >
-                SEND FILE
-              </Link>
-              <Link
-                href="/receive"
-                className="block font-mono text-sm py-3 px-4 text-foreground hover:bg-accent/10 hover:text-accent transition-all duration-200 border border-transparent hover:border-accent/30"
-                onClick={() => setIsMenuOpen(false)}
-                data-testid="link-receive"
-              >
-                RECEIVE FILE
-              </Link>
-            </div>
-
-            <div className="pt-6 border-t border-accent/20">
-              <div className="font-mono text-xs text-muted-foreground space-y-1">
-                <div>// P2P FILE TRANSFER</div>
-                <div>// NO CLOUD STORAGE</div>
-                <div>// DIRECT CONNECTION</div>
-              </div>
-            </div>
+            <Link
+              href="/"
+              className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70 transition-all duration-200 hover:translate-x-2"
+              style={{ color: 'hsl(var(--header-text))' }}
+              onClick={() => setIsMenuOpen(false)}
+              data-testid="link-home"
+            >
+              [ SEND ]
+            </Link>
+            <Link
+              href="/receive"
+              className="no-underline hover:underline text-lg font-sans py-2 hover:opacity-70 transition-all duration-200 hover:translate-x-2"
+              style={{ color: 'hsl(var(--header-text))' }}
+              onClick={() => setIsMenuOpen(false)}
+              data-testid="link-receive"
+            >
+              [ RECEIVE ]
+            </Link>
           </div>
         </nav>
       </div>
 
-      {/* Main Content */}
-      <main className="flex-1 px-4 py-8">
+      <main 
+        className="border-2 p-4 sm:p-6 min-h-[500px]" 
+        style={{ backgroundColor: 'hsl(var(--input-bg))', borderColor: 'hsl(var(--border-shadow))' }}
+      >
         {children}
       </main>
       
-      {/* Footer */}
-      <footer className="border-t border-accent/20 py-4 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <span className="font-mono text-xs text-muted-foreground">
-            QuickSend // Peer-to-Peer File Transfer
-          </span>
+      <footer className="mt-6 text-center text-xs sm:text-sm font-mono" style={{ color: 'hsl(var(--text-secondary))' }}>
+        <hr className="mb-3" style={{ borderColor: 'hsl(var(--border-shadow))' }} />
+        <div>
+          QuickSend - Fast & Secure P2P File Transfer
         </div>
       </footer>
     </div>
