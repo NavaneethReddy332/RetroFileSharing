@@ -1,12 +1,13 @@
-# RetroSend - 90s-Style File Sharing Application
+# QuickSend - P2P File Transfer Application
 
 ## Overview
 
-RetroSend is a temporary file-sharing web application that combines a nostalgic 1990s-style user interface with a modern, secure backend architecture. The application allows users to upload files and receive a 6-digit share code for easy sharing. Files are automatically deleted after 24 hours, and the entire experience is wrapped in an authentic retro aesthetic featuring period-appropriate fonts, colors, and design elements.
+QuickSend is a peer-to-peer file transfer web application that enables direct, real-time file transfers between users. The application generates a 6-digit code when a sender selects a file, which receivers use to connect and receive the file directly via WebSocket - no cloud storage required. The UI features a clean retro aesthetic with orange and black color scheme.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## System Architecture
 
@@ -14,122 +15,95 @@ Preferred communication style: Simple, everyday language.
 
 **Framework & Build System**
 - React with TypeScript for type-safe component development
-- Vite as the build tool and development server, configured for both development and production environments
-- Wouter for lightweight client-side routing instead of React Router
+- Vite as the build tool and development server
+- Wouter for lightweight client-side routing
 
 **UI Component Library**
-- shadcn/ui components (Radix UI primitives) for accessible, composable UI elements
-- Tailwind CSS for utility-first styling with custom retro-themed design tokens
-- Custom retro fonts: VT323, Press Start 2P, and Courier Prime for authentic 90s aesthetics
+- shadcn/ui components (Radix UI primitives) for accessible UI elements
+- Tailwind CSS with custom retro-themed design tokens
+- Lucide React for icons
+
+**Key Components**
+- `RetroLayout.tsx` - Wrapper component with retro styling (header, main content, footer)
+- `Home.tsx` - Send page with drag-and-drop file selection, code generation, and progress logs
+- `Receive.tsx` - Receive page with 6-digit code entry and file download
 
 **State Management**
-- TanStack Query (React Query) for server state management, caching, and API interaction
-- React Context API for Terminal logging system that displays real-time operation logs in a retro terminal style
-
-**Design System**
-- Custom theme variables defined inline in CSS for retro color palette (#c0c0c0 gray, #000080 blue, etc.)
-- Component-based architecture with reusable RetroLayout wrapper
-- Responsive design considerations with mobile breakpoint detection
+- React useState/useEffect for component-level state
+- TanStack Query for API interactions
+- WebSocket connections for real-time P2P transfer
 
 ### Backend Architecture
 
 **Server Framework**
 - Express.js for HTTP server and API routing
-- Custom development and production server setups with different static file serving strategies
+- WebSocket Server (ws) for real-time signaling and file chunk transfer
 - Development mode integrates Vite middleware for hot module replacement
 
-**File Upload & Storage**
-- Busboy middleware for handling multipart/form-data file uploads (supports multiple files)
-- **Multi-file upload**: When multiple files are selected, they are automatically compressed into a ZIP archive
-- **Backblaze B2 cloud storage** for production file storage (replaced local file system)
-- Backblaze service module (server/backblaze.ts) handles upload, download, and delete operations
-- Automatic token reauthorization with retry logic for long-lived processes
-- 1GB file size limit enforced at the middleware level
-- Random 6-digit code generation for file identification
-- Orphaned file prevention: B2 files deleted before database records
-- archiver package for creating ZIP archives from multiple files
+**WebSocket Signaling Server**
+- Manages sender-receiver pairing via 6-digit codes
+- Forwards file chunks from sender to receiver in real-time
+- Handles progress updates and connection lifecycle
+- Cleans up sessions on completion or disconnect
 
 **Data Layer**
-- **Turso database** (LibSQL/SQLite) for persistent data storage
-- Drizzle ORM configured for Turso with SQLite-compatible schema definitions
-- Automatic file cleanup mechanism using setInterval to remove expired files
-- Schema includes Users, Files, and GuestbookEntries tables
-- Timestamps stored in milliseconds using `timestamp_ms` mode for proper Date handling
-
-**Request/Response Handling**
-- JSON body parsing with raw body preservation for webhook verification scenarios
-- URL-encoded form data support
-- Request logging middleware that captures duration, status codes, and response payloads
-- CORS and security considerations through Express middleware
+- **Turso database** (LibSQL/SQLite) for session metadata only (no file storage)
+- Drizzle ORM configured for Turso with SQLite-compatible schema
+- Sessions automatically expire after configured duration
+- Periodic cleanup removes expired sessions
 
 ### Data Schema
 
-**Files Table**
-- Unique 6-digit codes for file retrieval
-- Original filename preservation alongside system-generated unique filenames
-- File metadata: size, MIME type
-- **b2FileId field** for tracking cloud storage files in Backblaze B2
-- Timestamp tracking: uploadedAt, expiresAt (24-hour expiration window)
-- UUID primary keys with PostgreSQL's gen_random_uuid()
-
-**Users Table**
-- Basic authentication structure (username/password)
-- Prepared for potential future authentication features
+**Transfer Sessions Table**
+- `id` - UUID primary key
+- `code` - Unique 6-digit transfer code
+- `file_name` - Original filename
+- `file_size` - File size in bytes
+- `mime_type` - MIME type
+- `status` - Session status (waiting, connected, transferring, completed, expired)
+- `created_at` - Creation timestamp
+- `expires_at` - Expiration timestamp (30 minutes default)
 
 ### API Structure
 
 **Endpoints**
-- `POST /api/upload` - Accepts file uploads via multipart form data, returns share code and file metadata
-  - Rate limited to 10 requests per 15 minutes per IP
-  - Validates file types and blocks dangerous executables
-  - Validates and whitelists expiration times (1hr, 12hr, 24hr, 7 days)
-- `GET /api/file/:code` - Retrieves file metadata for display before download
-  - Rate limited to 30 requests per 15 minutes per IP
-- `POST /api/verify-password` - Verifies password for protected files
-  - Rate limited to 5 attempts per 15 minutes per IP to prevent brute force attacks
-- Download functionality integrated through code-based retrieval
-  - Rate limited to 20 downloads per 15 minutes per IP
+- `POST /api/session` - Creates new transfer session, returns 6-digit code
+- `GET /api/session/:code` - Retrieves session metadata for receivers
+- `PUT /api/session/:code` - Updates session status
 
-**Security Features (Added November 2025)**
-- **Rate Limiting**: IP-based rate limiting on all critical endpoints to prevent abuse
-- **File Type Validation**: Blocks dangerous executables (.exe, .bat, .sh, etc.) and detects double-extension bypass attempts
-- **Expiration Validation**: Server-side whitelisting of expiration times prevents indefinite file retention
-- **Error Handling**: Proper rollback on failed downloads to prevent download count corruption
+**WebSocket Messages**
+- `sender-ready` - Sender has file ready and waiting
+- `receiver-joined` - Receiver connected with matching code
+- `chunk` - Base64-encoded file chunk (32KB default)
+- `progress` - Transfer progress percentage
+- `transfer-complete` - File transfer finished
+- `error` - Error message
 
-**Performance Optimizations (November 28-29, 2025)**
-- **Memory-Safe Streaming**: Files now stream to temp files instead of memory, preventing OOM on large uploads
-- **Parallel Upload**: Large files use 10MB chunks with 6 concurrent uploads for faster speeds
-- **SHA-1 Verification**: File integrity verified on upload to prevent corruption
-- **Retry Logic**: All B2 operations have exponential backoff retry for reliability
-- **Range Downloads**: HTTP Range header support for resumable downloads
-- **Atomic Counters**: Download counts use atomic operations to prevent race conditions
-- **Orphan Cleanup**: B2 files cleaned up if database insert fails; temp files cleaned on all error paths
-- **Real-time Progress**: Accurate upload/download progress tracking
+### P2P Transfer Flow
 
-**Validation**
-- Zod schemas generated from Drizzle ORM schemas for runtime type validation
-- Input validation using @hookform/resolvers for form handling
-- Custom middleware for file type validation (server/middleware/fileValidation.ts)
-- Custom middleware for expiration time validation (server/middleware/expirationValidator.ts)
-- Rate limiting middleware using express-rate-limit (server/middleware/rateLimiter.ts)
+1. **Sender**: Selects file, clicks "Generate Code"
+2. **Backend**: Creates session in Turso, returns 6-digit code
+3. **Sender**: Connects to WebSocket, waits for receiver
+4. **Receiver**: Enters 6-digit code, connects to WebSocket
+5. **Backend**: Pairs sender and receiver via code
+6. **Transfer**: Sender sends file in chunks via WebSocket
+7. **Receiver**: Reconstructs file from chunks, triggers download
+8. **Cleanup**: Session marked complete, cleaned up on expiration
 
 ### Development & Build Process
 
 **Development Mode**
-- Vite dev server runs on port 5000
-- Express backend serves API routes and proxies frontend requests to Vite
-- Hot module replacement for instant feedback during development
-- Custom Replit plugins for error overlays, cartographer, and dev banner
+- `npm run dev` - Starts Express + Vite dev server on port 5000
+- Hot module replacement for instant feedback
+- WebSocket server runs on same port with `/ws` path
 
 **Production Build**
 - Client builds to `dist/public` using Vite
-- Server bundles to `dist/index.js` using esbuild with ESM format
+- Server bundles to `dist/index.js` using esbuild
 - Static file serving from built client directory
-- All routes fall through to index.html for SPA routing
 
 **Database Operations**
-- `npm run db:push` - Pushes schema changes to Turso using Drizzle Kit
-- Migration files stored in `/migrations` directory
+- Table created via direct SQL execution
 - Configured for Turso (LibSQL) database
 
 ## External Dependencies
@@ -139,35 +113,24 @@ Preferred communication style: Simple, everyday language.
 **Database**
 - Turso (LibSQL) - Edge SQLite database with global replication
 - @libsql/client for database connectivity
-- Configured via TURSO_DATABASE_URL and TURSO_AUTH_TOKEN secrets
-
-**Cloud Storage**
-- Backblaze B2 (backblaze-b2) - Cloud object storage for file uploads
-- Configured via B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, and B2_BUCKET_NAME secrets
-- Automatic token reauthorization and retry logic for production reliability
-- Orphaned file prevention through coordinated deletion
+- Required secrets: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 
 **Replit Platform Integration**
 - @replit/vite-plugin-runtime-error-modal - Development error overlay
 - @replit/vite-plugin-cartographer - Code navigation features
 - @replit/vite-plugin-dev-banner - Development environment indicator
-- Custom meta images plugin for OpenGraph image handling on Replit deployments
 
 ### Key NPM Packages
 
 **Core Framework**
 - react, react-dom - UI library
 - express - Web server framework
+- ws - WebSocket library for real-time communication
 - drizzle-orm - Type-safe ORM for Turso/SQLite
 - vite - Build tool and dev server
 
-**File Handling**
-- multer - Multipart form data and file upload handling
-- backblaze-b2 - Cloud storage SDK for Backblaze B2
-
 **UI Components**
-- @radix-ui/* - Accessible component primitives (30+ packages)
-- class-variance-authority - Component variant styling
+- @radix-ui/* - Accessible component primitives
 - tailwindcss - Utility-first CSS framework
 - lucide-react - Icon library
 
@@ -177,75 +140,45 @@ Preferred communication style: Simple, everyday language.
 - esbuild - Fast JavaScript bundler for production
 - wouter - Lightweight routing library
 
-**Form & Data Handling**
-- react-hook-form - Form state management
-- @hookform/resolvers - Form validation
-- zod - Schema validation
-- @tanstack/react-query - Server state management
-
-### Font Resources
-
-**Google Fonts CDN**
-- Press Start 2P - Pixel-style font for headers
-- VT323 - Terminal/monospace font
-- Courier Prime - Typewriter-style font
-
-### Asset Management
-
-- Custom video assets stored in `/attached_assets/generated_videos/`
-- Static assets served from `client/public/`
-- Path aliases configured: @/ for client source, @shared for shared code, @assets for attached assets
-
 ## Recent Updates
 
-### Turso Database Setup (November 29, 2025)
-- **Using Turso (LibSQL)**: Edge SQLite database with global replication
-- Drizzle ORM configured with `drizzle-orm/libsql` for Turso connectivity
-- Database schema uses SQLite format:
-  - Uses `sqliteTable` for table definitions
-  - Timestamp fields use `integer` with `timestamp_ms` mode for Date handling
-  - ID generation uses `crypto.randomUUID()` with text primary keys
-- Database client: `@libsql/client` for Turso connection
-- Required environment variables: `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`
+### December 1, 2025 - P2P File Transfer System
 
-### November 28, 2025
+**Major Rewrite**
+- Converted from cloud storage (Backblaze B2) to P2P WebSocket transfer
+- Files transfer directly between sender and receiver browsers
+- Database only stores session metadata, not file contents
+- Clean retro UI without terminal, video, or marquee sections
 
-### Theme Update (Final)
-- Changed from Blue theme to **Black, Orange, White** color scheme
-- All CSS custom properties now use HSL format (H S% L%) without hsl() wrapper
-- All inline styles and CSS usages wrap variables with hsl(var(--...)) pattern
-- Added CSS variables for status colors (password strength meter)
-- Added CSS variables for animation overlay effects (scanlines, flicker)
-- Added Backblaze brand colors as CSS variables
+**New Features**
+- Real-time file transfer via WebSocket
+- 6-digit code generation for easy sharing
+- Drag-and-drop file selection
+- Progress logs displayed under upload button
+- File chunk transfer with progress tracking
+- Automatic session cleanup on expiration
 
-### Fixed Issues
-- **External Icons**: Replaced with Lucide React icons (FileText, Lock, AlertTriangle, Copy, Eye, EyeOff)
-- **Responsive File Info**: Replaced HTML tables with flex layout for mobile compatibility
-- **Marquee Text**: Fixed animation and updated content to be clearer
-- **Outdated Content**: Updated "Why use RetroSend?" section with accurate feature descriptions
-- **Form Accessibility**: Added proper ARIA labels to all password inputs
-- **Drag-and-Drop**: Added drag-and-drop file upload zone with visual feedback
-- **File Type Feedback**: Improved error messages to show allowed file types
-- **Password Visibility**: Added show/hide password toggle buttons on all password fields
-- **Password Confirmation**: Added confirmation field when setting file protection password
-- **Copy Buttons**: Added copy buttons for share code and download link on result page
-- **Rate Limiter Warnings**: Fixed X-Forwarded-For validation errors
-- **Download Progress**: Smooth real-time progress animation instead of jumping
+**UI Changes**
+- Removed terminal window component
+- Removed video feed section
+- Removed marquee banner
+- Clean, minimal retro styling with orange accents
 
-## Remaining Known Issues
+## Architecture Notes
 
-### Performance Issues
-1. **No Download Resume**: If download is interrupted, must restart from beginning (Range headers supported but not client-side resume)
+**Why P2P?**
+- No file storage costs
+- Faster transfers (direct connection)
+- Enhanced privacy (files don't touch server storage)
+- Simplified infrastructure
 
-### Security Considerations
-3. **Client-Side Code Display**: Download codes are visible in URLs
+**Limitations**
+- Both sender and receiver must be online simultaneously
+- Large files may time out on slow connections
+- WebSocket connection required throughout transfer
 
-### Missing Features
-4. **No Upload History**: Users can't see their previously uploaded files
-5. **No File Preview**: No ability to preview files before downloading
-6. **No QR Code**: Share codes could benefit from QR code generation
-7. **No Email Notification**: No option to receive email when file is downloaded
-
-### Technical Debt
-8. **Mixed Styling Approaches**: Uses both inline styles and Tailwind classes
-9. **Hardcoded Strings**: Many UI strings are hardcoded (no localization)
+**Future Improvements**
+- Binary WebSocket frames for efficiency (currently base64)
+- Zod validation on API endpoints
+- WebRTC for true peer-to-peer (currently relayed through server)
+- Resume support for interrupted transfers
