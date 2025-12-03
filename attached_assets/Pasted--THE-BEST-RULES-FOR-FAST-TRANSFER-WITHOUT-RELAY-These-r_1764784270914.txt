@@ -1,0 +1,279 @@
+⚡ THE BEST RULES FOR FAST TRANSFER WITHOUT RELAY
+
+These rules are what Snapdrop / Airdrop / SendAnywhere P2P direct mode follow.
+
+✅ RULE 1 — USE WEBRTC DATA CHANNEL FOR PURE P2P UDP TRANSFER
+
+WebRTC uses UDP, not TCP.
+
+UDP = faster than HTTP / XMLHttpRequest.
+
+Only WebRTC can transfer at near maximum network speed directly between devices.
+
+Not WebSockets.
+Not AJAX.
+Not fetch().
+Only WebRTC Data Channel.
+
+✅ RULE 2 — ALWAYS TRY DIRECT CONNECTION FIRST
+
+Before transfer, exchange:
+
+🔹 WebRTC offer
+🔹 ICE candidates
+
+Use a STUN server to get real public IP & NAT port mapping.
+
+Use public STUN service, e.g.:
+
+stun:stun.l.google.com:19302
+stun:stun1.l.google.com:19302
+
+
+When direct connection is possible (same LAN or successful NAT hole punch), speed is near user’s max.
+
+✅ RULE 3 — DO NOT SPLIT INTO LARGE CHUNKS
+
+Many tutorials say “chunk size 64KB” or “512KB”.
+
+For maximum speed:
+
+✔ Use CHUNKS = ~16KB to 64KB
+✔ Too small = overhead.
+✔ Too large = buffer pressure, throttles.
+
+Optimal chunk size = 32KB for most networks.
+
+✅ RULE 4 — PIPE DATA IN A CONTINUOUS STREAM
+
+Do NOT send one chunk, wait for ack, then send next.
+
+Instead:
+
+while(buffer_has_data AND peer_buffer_not_full){
+    dataChannel.send(next32KBchunk);
+}
+
+
+This ensures maximum pipeline utilization.
+
+✅ RULE 5 — NEVER BLOCK THE SEND LOOP
+
+Do NOT use:
+
+await dataChannel.send(chunk);
+
+
+Instead use a send buffer queue.
+
+Push chunks like:
+
+if(dataChannel.bufferedAmount < MAX_BUFFER_LIMIT){
+    dataChannel.send(chunk);
+}
+
+
+And monitor:
+
+dataChannel.onbufferedamountlow = () => {
+   // send more
+}
+
+
+This ensures the channel is always “full but not overloaded”.
+
+✅ RULE 6 — TUNE BUFFER
+
+WebRTC buffer defaults vary by browser.
+
+For fastest transfers:
+
+const MAX_BUFFER_LIMIT = 16 * 1024 * 1024; // 16 MB of buffer
+
+
+Keep buffer full but never overflow.
+
+✅ RULE 7 — SIGNAL ONLY ONCE, THEN TRANSFER
+
+Your signaling server should do ONLY:
+
+✔ exchange WebRTC SDP offer
+✔ exchange ICE candidates
+
+After this, remote peer sends back ready → then start streaming.
+
+No repeated server pings. No repeated signaling.
+
+✅ RULE 8 — USE BINARY TRANSFER (ARRAYBUFFER), NOT STRING
+
+Do NOT convert chunks to Base64 or JSON.
+
+Do NOT send text.
+
+✔ Use event.dataChannel.send(arrayBuffer) (binary only)
+
+Binary = native speed.
+Text = slow & inefficient.
+
+✅ RULE 9 — OPTIMIZE FILE READING
+
+FileReader/File slicing:
+
+Use:
+
+const CHUNK_SIZE = 32 * 1024; // 32 KB
+
+
+And read like:
+
+function sendNextChunk(){
+   const chunk = file.slice(offset, offset + CHUNK_SIZE);
+   fileReader.readAsArrayBuffer(chunk);
+}
+
+
+Stop only when buffer is near full.
+Do NOT read entire file in memory.
+
+✅ RULE 10 — USE BACKPRESSURE CONTROL
+
+Only send more if:
+
+dataChannel.bufferedAmount < MAX_BUFFER_LIMIT/2
+
+
+This ensures:
+
+✔ buffer is full
+✔ channel is fast
+✔ no stalls or crashes
+
+✅ RULE 11 — PREFER LOSSY NETWORK (UDP) OVER RELIABLE
+
+WebRTC default is reliable mode, which ensures delivery but reduces speed.
+
+If you want MAX SPEED, configure DataChannel:
+
+pc.createDataChannel('file', {
+    ordered: true,          // keep order
+    maxRetransmits: 0       // 0 = no retransmission = faster 
+});
+
+
+This sacrifices retransmit but doubles speed.
+
+⚠ Only do this if app CAN handle occasional missing packets.
+Most file transfers can handle small retransmission at the application level.
+
+✅ RULE 12 — CORRECT CHUNK WINDOW MANAGEMENT (KEY)
+
+Do not wait for each chunk.
+Never use:
+
+for(each chunk) {
+    await send(chunk); // BAD!
+}
+
+
+Use a window of multiple chunks like:
+
+send next chunk ONLY WHEN buffer < threshold
+
+
+This keeps the pipeline full.
+
+✅ RULE 13 — TURN OFF UNNECESSARY LOGGING
+
+Frequent console logs kill speed.
+
+Remove:
+
+console.log(chunk);
+
+
+Speed drops drastically.
+
+✅ RULE 14 — FOR SAME-NETWORK TRANSFERS (LAN), FORCE ICE TO PREFER LOCAL
+
+Use:
+
+pcConfig = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceCandidatePoolSize: 10,
+};
+
+
+Allows best NAT hole punching → max speed.
+
+✅ RULE 15 — HANDLE WI-FI SCHEDULER & POWER SAVE
+
+Mobile or laptops sometimes throttle network on battery save.
+
+👉 Hold network alive
+👉 Disable sleep timers while transfer
+
+(This is app-level optimization.)
+
+✅ RULE 16 — MEASURE REAL-TIME SPEED
+
+Do not measure speed after everything.
+
+Measure speed like:
+
+deltaBytes / deltaTime
+
+
+Every 500 ms.
+
+This gives fast live UI.
+
+✅ FINAL SPEED REALITY CHECK (Browser WebRTC Limits)
+Conditions	Expected Speed
+Same WiFi, perfect hole punch	20–60 Mbps (40 avg)
+Same LAN (best case)	40–150 Mbps
+Different networks (public Internet)	10–30 Mbps (norm)
+One user on mobile, one on laptop	5–25 Mbps
+
+Browser P2P will never fully match server upload/download of ~150 Mbps, specially on cheap notebooks & WiFi.
+
+⚡ SPECIAL ADVANCED OPTION (USE MULTIPLE DATA CHANNELS AT ONCE)
+
+To approach 100+ Mbps, like SendAnywhere:
+
+Instead of 1 single channel:
+
+Create multiple parallel data channels (like 4–6).
+
+for(let i=0; i<4; i++){
+  channels[i] = pc.createDataChannel(`file-${i}`, {
+    ordered: false,  // fastest
+    maxRetransmits: 0 
+  });
+}
+
+
+Send different chunk windows on each channel simultaneously.
+
+This increases throughput ~3–5×.
+
+✅ PERFECT RULES SUMMARY (ALL)
+RULE	PURPOSE
+1	Use WebRTC (UDP P2P), not HTTP fetch
+2	Try DIRECT connection FIRST (STUN hole punch)
+3	Use 32KB chunk size (optimum)
+4	Keep pipeline full (send continuously)
+5	Use bufferedAmount + low buffer events
+6	Set max buffer ~16 MB
+7	Only signal once; no repeated server calls
+8	Send binary (ArrayBuffer), not text
+9	Read file in sliding window slices
+10	Respect backpressure & buffer limits
+11	Use “maxRetransmits = 0” for fastest UDP mode
+12	Manage chunk window, do not await sends
+13	Turn off logging during transfer
+14	Prefer local ICE route if same network
+15	Optional: multiple parallel data channels
+16	Measure speed every 0.5–1s for UI updates
+🔥 FINAL ONE-LINE ANSWER YOU CAN COPY
+
+“To achieve lightning-fast P2P transfer without any relay, use WebRTC UDP data channels with a properly filled, continuous stream (32KB chunks, binary transfer, no awaiting send calls), saturate the pipeline by monitoring bufferedAmount, and optionally use multiple parallel channels for max throughput.”
