@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft } from 'lucide-react';
 
 interface RetroLayoutProps {
   children: React.ReactNode;
@@ -8,39 +8,54 @@ interface RetroLayoutProps {
 
 export function RetroLayout({ children }: RetroLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isHoveringTrigger, setIsHoveringTrigger] = useState(false);
+  const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
   const [location] = useLocation();
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const windowWidth = window.innerWidth;
-      const isNearRightEdge = e.clientX >= windowWidth - 8;
-      
-      if (isNearRightEdge && !isSidebarOpen) {
-        setIsSidebarOpen(true);
-      }
-    };
+  const clearCloseTimeout = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }, []);
 
-    const handleMouseLeave = (e: MouseEvent) => {
-      if (sidebarRef.current && !sidebarRef.current.contains(e.relatedTarget as Node)) {
+  const scheduleClose = useCallback(() => {
+    clearCloseTimeout();
+    closeTimeoutRef.current = setTimeout(() => {
+      if (!isHoveringTrigger && !isHoveringSidebar) {
         setIsSidebarOpen(false);
       }
-    };
+    }, 300);
+  }, [isHoveringTrigger, isHoveringSidebar, clearCloseTimeout]);
 
-    document.addEventListener('mousemove', handleMouseMove);
-    
-    if (sidebarRef.current) {
-      sidebarRef.current.addEventListener('mouseleave', handleMouseLeave);
+  useEffect(() => {
+    if (isHoveringTrigger || isHoveringSidebar) {
+      clearCloseTimeout();
+      setIsSidebarOpen(true);
+    } else {
+      scheduleClose();
     }
+  }, [isHoveringTrigger, isHoveringSidebar, scheduleClose, clearCloseTimeout]);
 
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      if (sidebarRef.current) {
-        sidebarRef.current.removeEventListener('mouseleave', handleMouseLeave);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      }
+      if (e.key === ']' && e.ctrlKey) {
+        e.preventDefault();
+        setIsSidebarOpen(prev => !prev);
       }
     };
-  }, [isSidebarOpen]);
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      clearCloseTimeout();
+    };
+  }, [isSidebarOpen, clearCloseTimeout]);
 
   return (
     <div className="h-screen w-full overflow-hidden" style={{ backgroundColor: 'hsl(var(--surface))' }}>
@@ -72,6 +87,16 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             >
               RECEIVE
             </Link>
+            <button
+              onClick={() => setIsSidebarOpen(prev => !prev)}
+              className="ml-2 p-1 transition-colors"
+              style={{ color: 'hsl(var(--text-dim))' }}
+              title="Toggle sidebar (Ctrl+])"
+              data-testid="button-toggle-sidebar"
+              aria-label="Toggle sidebar"
+            >
+              <ChevronLeft size={14} className={`transform transition-transform ${isSidebarOpen ? 'rotate-180' : ''}`} />
+            </button>
           </div>
         </header>
 
@@ -92,18 +117,22 @@ export function RetroLayout({ children }: RetroLayoutProps) {
         </footer>
       </div>
 
-      {/* Sidebar trigger indicator */}
+      {/* Sidebar trigger area - invisible but larger hit zone */}
       <div 
-        ref={triggerRef}
         className="sidebar-trigger"
-        onMouseEnter={() => setIsSidebarOpen(true)}
+        onMouseEnter={() => setIsHoveringTrigger(true)}
+        onMouseLeave={() => setIsHoveringTrigger(false)}
+        aria-hidden="true"
       />
 
       {/* Auto-hide sidebar */}
       <div 
         ref={sidebarRef}
         className={`sidebar-panel ${isSidebarOpen ? 'open' : ''}`}
-        onMouseLeave={() => setIsSidebarOpen(false)}
+        onMouseEnter={() => setIsHoveringSidebar(true)}
+        onMouseLeave={() => setIsHoveringSidebar(false)}
+        role="complementary"
+        aria-label="Quick actions sidebar"
       >
         <div className="flex items-center justify-between mb-4">
           <span 
@@ -117,6 +146,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             className="p-1 transition-colors hover:opacity-70"
             style={{ color: 'hsl(var(--text-dim))' }}
             data-testid="button-close-sidebar"
+            aria-label="Close sidebar"
           >
             <X size={12} />
           </button>
@@ -154,6 +184,11 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <p className="text-[9px] leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
               Files are transferred directly between devices. No data is stored on servers.
             </p>
+          </div>
+          <div className="mt-2 text-center">
+            <span className="text-[8px]" style={{ color: 'hsl(var(--text-dim) / 0.5)' }}>
+              Ctrl+] to toggle
+            </span>
           </div>
         </div>
       </div>
