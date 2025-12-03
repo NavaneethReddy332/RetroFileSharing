@@ -54,18 +54,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid code format" });
       }
 
-      const session = await storage.getSessionByCode(code);
+      const sessionWithCompleted = await storage.getSessionByCodeIncludeCompleted(code);
 
-      if (!session) {
-        return res.status(404).json({ error: "Session not found or expired" });
+      if (!sessionWithCompleted) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (sessionWithCompleted.status === 'completed') {
+        const completedDate = sessionWithCompleted.completedAt 
+          ? new Date(sessionWithCompleted.completedAt)
+          : new Date(sessionWithCompleted.createdAt);
+        
+        return res.status(410).json({ 
+          error: "This transfer was completed",
+          status: "completed",
+          fileName: sessionWithCompleted.fileName,
+          fileSize: sessionWithCompleted.fileSize,
+          completedAt: completedDate.toISOString(),
+          message: "This transfer was completed long ago"
+        });
+      }
+
+      if (sessionWithCompleted.status === 'expired' || 
+          sessionWithCompleted.expiresAt <= new Date().toISOString()) {
+        return res.status(410).json({ 
+          error: "This session has expired",
+          status: "expired",
+          fileName: sessionWithCompleted.fileName,
+          fileSize: sessionWithCompleted.fileSize,
+          message: "This transfer session has expired"
+        });
       }
 
       res.json({
-        code: session.code,
-        fileName: session.fileName,
-        fileSize: session.fileSize,
-        mimeType: session.mimeType,
-        status: session.status,
+        code: sessionWithCompleted.code,
+        fileName: sessionWithCompleted.fileName,
+        fileSize: sessionWithCompleted.fileSize,
+        mimeType: sessionWithCompleted.mimeType,
+        status: sessionWithCompleted.status,
       });
     } catch (error) {
       console.error("Session lookup error:", error);
@@ -95,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!room) {
               const session = await storage.getSessionByCode(code);
               if (!session) {
-                ws.send(JSON.stringify({ type: "error", error: "Session not found" }));
+                ws.send(JSON.stringify({ type: "error", error: "Session not found or already completed" }));
                 return;
               }
               room = {
@@ -126,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!room) {
               const session = await storage.getSessionByCode(code);
               if (!session) {
-                ws.send(JSON.stringify({ type: "error", error: "Session not found" }));
+                ws.send(JSON.stringify({ type: "error", error: "Session not found or already completed" }));
                 return;
               }
               room = {
@@ -190,7 +216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const room = rooms.get(currentCode);
             if (!room) return;
 
-            await storage.updateSessionStatus(room.sessionId, "completed");
+            await storage.markSessionCompleted(room.sessionId);
 
             if (room.sender && room.sender.readyState === WebSocket.OPEN) {
               room.sender.send(JSON.stringify({ type: "transfer-complete" }));

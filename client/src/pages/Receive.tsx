@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CheckCircle, Clock } from "lucide-react";
 import { useSearch } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { SpeedIndicator } from "../components/SpeedIndicator";
@@ -12,6 +12,13 @@ interface LogEntry {
   timestamp: Date;
 }
 
+interface CompletedSessionInfo {
+  fileName: string;
+  fileSize: number;
+  completedAt: string;
+  message: string;
+}
+
 export default function Receive() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -19,11 +26,12 @@ export default function Receive() {
   
   const [code, setCode] = useState(initialCode);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete'>('idle');
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete' | 'already-completed' | 'expired'>('idle');
   const [progress, setProgress] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [fileInfo, setFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [receivedData, setReceivedData] = useState<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } } | null>(null);
+  const [completedSession, setCompletedSession] = useState<CompletedSessionInfo | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -77,6 +85,21 @@ export default function Receive() {
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const formatCompletedDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    return date.toLocaleDateString();
+  };
+
   const startReceiving = async (codeToUse?: string) => {
     const activeCode = codeToUse || code;
     if (activeCode.length !== 6) {
@@ -86,10 +109,33 @@ export default function Receive() {
 
     setLogs([]);
     setStatus('connecting');
+    setCompletedSession(null);
     addLog('connecting...', 'system');
 
     try {
       const response = await fetch(`/api/session/${activeCode}`);
+      
+      if (response.status === 410) {
+        const data = await response.json();
+        
+        if (data.status === 'completed') {
+          setCompletedSession({
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+            completedAt: data.completedAt,
+            message: data.message
+          });
+          setStatus('already-completed');
+          addLog('transfer already completed', 'warn');
+          return;
+        }
+        
+        if (data.status === 'expired') {
+          setStatus('expired');
+          addLog('session expired', 'error');
+          return;
+        }
+      }
       
       if (!response.ok) {
         const error = await response.json();
@@ -205,6 +251,7 @@ export default function Receive() {
     setCurrentSpeed(0);
     setFileInfo(null);
     setReceivedData(null);
+    setCompletedSession(null);
     setLogs([]);
   };
 
@@ -274,6 +321,65 @@ export default function Receive() {
                   connecting...
                 </div>
               </div>
+            </div>
+          )}
+
+          {status === 'already-completed' && completedSession && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                ALREADY COMPLETED
+              </div>
+              <div className="minimal-border p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle size={16} style={{ color: 'hsl(var(--accent))' }} />
+                  <div className="text-xs" style={{ color: 'hsl(var(--accent))' }}>
+                    Transfer completed
+                  </div>
+                </div>
+                <div className="text-xs truncate mb-1" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  {completedSession.fileName}
+                </div>
+                <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {formatFileSize(completedSession.fileSize)}
+                </div>
+                <div className="flex items-center gap-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  <Clock size={10} />
+                  <span>{formatCompletedDate(completedSession.completedAt)}</span>
+                </div>
+                <div className="mt-3 pt-3 border-t text-[10px] text-center" style={{ borderColor: 'hsl(var(--border))', color: 'hsl(var(--text-dim))' }}>
+                  This transfer was completed long ago
+                </div>
+              </div>
+              <button
+                onClick={resetReceiver}
+                className="minimal-btn minimal-btn-accent w-full mt-2"
+                data-testid="button-try-another"
+              >
+                try another code
+              </button>
+            </div>
+          )}
+
+          {status === 'expired' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                EXPIRED
+              </div>
+              <div className="minimal-border p-4 text-center">
+                <div className="text-xs mb-2" style={{ color: 'hsl(0 65% 55%)' }}>
+                  Session expired
+                </div>
+                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  This transfer session has expired
+                </div>
+              </div>
+              <button
+                onClick={resetReceiver}
+                className="minimal-btn minimal-btn-accent w-full mt-2"
+                data-testid="button-try-another-expired"
+              >
+                try another code
+              </button>
             </div>
           )}
 

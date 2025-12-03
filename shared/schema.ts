@@ -12,12 +12,14 @@ export const transferSessions = sqliteTable("transfer_sessions", {
   status: text("status").notNull().default("waiting"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   expiresAt: text("expires_at").notNull(),
+  completedAt: text("completed_at"),
 });
 
 export const insertTransferSessionSchema = createInsertSchema(transferSessions).omit({
   id: true,
   createdAt: true,
   status: true,
+  completedAt: true,
 });
 
 export type InsertTransferSession = z.infer<typeof insertTransferSessionSchema>;

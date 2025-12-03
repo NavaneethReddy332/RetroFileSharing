@@ -1,12 +1,13 @@
 import { type TransferSession, type InsertTransferSession, transferSessions } from "@shared/schema";
 import { db } from "./db";
-import { eq, lte } from "drizzle-orm";
+import { eq, lte, and, ne } from "drizzle-orm";
 
 export interface IStorage {
   createTransferSession(session: InsertTransferSession): Promise<TransferSession>;
   getSessionByCode(code: string): Promise<TransferSession | undefined>;
+  getSessionByCodeIncludeCompleted(code: string): Promise<TransferSession | undefined>;
   updateSessionStatus(id: number, status: string): Promise<void>;
-  deleteSession(id: number): Promise<void>;
+  markSessionCompleted(id: number): Promise<void>;
   cleanupExpiredSessions(): Promise<void>;
 }
 
@@ -54,26 +55,47 @@ export class DatabaseStorage implements IStorage {
     
     if (!session) return undefined;
     
-    if (session.expiresAt <= new Date().toISOString()) {
-      await this.deleteSession(session.id);
+    if (session.status === 'completed') {
+      return undefined;
+    }
+    
+    if (session.expiresAt <= new Date().toISOString() && session.status !== 'completed') {
+      await this.updateSessionStatus(session.id, 'expired');
       return undefined;
     }
     
     return session;
   }
 
+  async getSessionByCodeIncludeCompleted(code: string): Promise<TransferSession | undefined> {
+    const result = await db.select().from(transferSessions).where(eq(transferSessions.code, code)).limit(1);
+    return result[0];
+  }
+
   async updateSessionStatus(id: number, status: string): Promise<void> {
     await db.update(transferSessions).set({ status }).where(eq(transferSessions.id, id));
   }
 
-  async deleteSession(id: number): Promise<void> {
-    await db.delete(transferSessions).where(eq(transferSessions.id, id));
+  async markSessionCompleted(id: number): Promise<void> {
+    const now = new Date().toISOString();
+    await db.update(transferSessions).set({ 
+      status: 'completed',
+      completedAt: now
+    }).where(eq(transferSessions.id, id));
   }
 
   async cleanupExpiredSessions(): Promise<void> {
     try {
       const now = new Date().toISOString();
-      await db.delete(transferSessions).where(lte(transferSessions.expiresAt, now));
+      await db.update(transferSessions)
+        .set({ status: 'expired' })
+        .where(
+          and(
+            lte(transferSessions.expiresAt, now),
+            ne(transferSessions.status, 'completed'),
+            ne(transferSessions.status, 'expired')
+          )
+        );
     } catch (error) {
       console.error('[CLEANUP] Error during session cleanup:', error);
     }
