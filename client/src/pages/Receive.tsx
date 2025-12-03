@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Download } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useSearch } from "wouter";
 
 interface LogEntry {
@@ -57,13 +57,13 @@ export default function Receive() {
   const startReceiving = async (codeToUse?: string) => {
     const activeCode = codeToUse || code;
     if (activeCode.length !== 6) {
-      addLog('INVALID: Please enter a valid 6-digit code', 'error');
+      addLog('invalid code', 'error');
       return;
     }
 
     setLogs([]);
     setStatus('connecting');
-    addLog('INIT: Connecting to session...', 'system');
+    addLog('connecting...', 'system');
     chunksRef.current = [];
     startTimeRef.current = Date.now();
 
@@ -77,8 +77,8 @@ export default function Receive() {
 
       const session = await response.json();
       setFileInfo({ name: session.fileName, size: session.fileSize });
-      addLog(`FILE: ${session.fileName}`, 'success');
-      addLog(`SIZE: ${formatFileSize(session.fileSize)} | TYPE: ${session.mimeType}`, 'data');
+      addLog(`file: ${session.fileName}`, 'success');
+      addLog(`${formatFileSize(session.fileSize)}`, 'data');
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -86,7 +86,7 @@ export default function Receive() {
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode }));
-        addLog('WS: Socket connected', 'info');
+        addLog('connected', 'info');
       };
 
       ws.onmessage = (event) => {
@@ -94,14 +94,13 @@ export default function Receive() {
 
         switch (message.type) {
           case 'joined':
-            addLog('WS: Joined room as receiver', 'info');
+            addLog('joined as receiver', 'info');
             setStatus('waiting');
-            addLog('STATUS: Waiting for sender...', 'warn');
+            addLog('waiting for sender...', 'warn');
             break;
 
           case 'peer-connected':
-            addLog('PEER: Sender connected!', 'success');
-            addLog('TRANSFER: Ready to receive data...', 'system');
+            addLog('sender connected', 'success');
             setStatus('receiving');
             startTimeRef.current = Date.now();
             break;
@@ -111,12 +110,12 @@ export default function Receive() {
             const percent = Math.round(((message.index + 1) / message.total) * 100);
             setProgress(percent);
             
-            if ((message.index + 1) % 10 === 0 || message.index + 1 === message.total) {
+            if ((message.index + 1) % 20 === 0 || message.index + 1 === message.total) {
               const elapsed = (Date.now() - startTimeRef.current) / 1000;
               const received = chunksRef.current.filter(Boolean).length;
               const avgSize = fileInfo ? fileInfo.size / message.total : 0;
               const speed = (received * avgSize) / elapsed / 1024 / 1024;
-              addLog(`RECV: ${percent}% | ${speed.toFixed(2)} MB/s`, 'data');
+              addLog(`${percent}% @ ${speed.toFixed(1)} MB/s`, 'data');
             }
             
             ws.send(JSON.stringify({ type: 'progress', percent }));
@@ -124,37 +123,36 @@ export default function Receive() {
 
           case 'transfer-complete':
             const totalTime = (Date.now() - startTimeRef.current) / 1000;
-            addLog(`COMPLETE: Transfer finished in ${totalTime.toFixed(2)}s`, 'success');
-            addLog('SAVE: Processing file...', 'system');
+            addLog(`done in ${totalTime.toFixed(1)}s`, 'success');
             saveFile();
             setStatus('complete');
             break;
 
           case 'peer-disconnected':
-            addLog('ERROR: Sender disconnected', 'error');
+            addLog('sender disconnected', 'error');
             setStatus('idle');
             break;
 
           case 'error':
-            addLog(`ERROR: ${message.error}`, 'error');
+            addLog(`${message.error}`, 'error');
             setStatus('idle');
             break;
         }
       };
 
       ws.onerror = () => {
-        addLog('WS_ERROR: Connection failed', 'error');
+        addLog('connection failed', 'error');
         setStatus('idle');
       };
 
       ws.onclose = () => {
         if (status !== 'complete') {
-          addLog('WS: Connection closed', 'warn');
+          addLog('disconnected', 'warn');
         }
       };
 
     } catch (error: any) {
-      addLog(`FATAL: ${error.message}`, 'error');
+      addLog(`${error.message}`, 'error');
       setStatus('idle');
     }
   };
@@ -163,7 +161,7 @@ export default function Receive() {
     if (!fileInfo || chunksRef.current.length === 0) return;
 
     try {
-      addLog('DECODE: Converting binary data...', 'system');
+      addLog('processing...', 'system');
       const binaryChunks = chunksRef.current.map(base64 => {
         const binaryString = atob(base64);
         const bytes = new Uint8Array(binaryString.length);
@@ -184,10 +182,9 @@ export default function Receive() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      addLog(`SAVED: ${fileInfo.name}`, 'success');
-      addLog(`SIZE: ${formatFileSize(blob.size)}`, 'data');
+      addLog(`saved: ${fileInfo.name}`, 'success');
     } catch (error: any) {
-      addLog(`SAVE_ERROR: ${error.message}`, 'error');
+      addLog(`${error.message}`, 'error');
     }
   };
 
@@ -214,174 +211,163 @@ export default function Receive() {
 
   const getLogColor = (type: LogEntry['type']) => {
     switch (type) {
-      case 'error': return '#ff5555';
-      case 'success': return '#50fa7b';
-      case 'warn': return '#f1fa8c';
-      case 'system': return '#bd93f9';
-      case 'data': return '#8be9fd';
-      default: return '#f8f8f2';
-    }
-  };
-
-  const getLogPrefix = (type: LogEntry['type']) => {
-    switch (type) {
-      case 'error': return '[ERR]';
-      case 'success': return '[OK!]';
-      case 'warn': return '[WRN]';
-      case 'system': return '[SYS]';
-      case 'data': return '[DAT]';
-      default: return '[INF]';
+      case 'error': return 'hsl(0 65% 55%)';
+      case 'success': return 'hsl(var(--accent))';
+      case 'warn': return 'hsl(45 80% 55%)';
+      case 'system': return 'hsl(270 50% 60%)';
+      case 'data': return 'hsl(200 60% 55%)';
+      default: return 'hsl(var(--text-secondary))';
     }
   };
 
   return (
     <RetroLayout>
-      <div className="max-w-xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2" style={{ color: 'hsl(var(--accent))' }}>
-            Receive Files
-          </h1>
-          <p style={{ color: 'hsl(var(--text-secondary))' }}>
-            Enter the 6-digit code from the sender to receive a file.
-          </p>
-        </div>
-
-        {status === 'idle' && (
-          <>
-            <div className="retro-border p-6 mb-4 text-center">
-              <Download
-                size={48}
-                className="mx-auto mb-4"
-                style={{ color: 'hsl(var(--text-secondary))' }}
-              />
-              <div className="mb-4">
-                <label className="block mb-2" style={{ color: 'hsl(var(--text-secondary))' }}>
-                  Enter Code:
-                </label>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  className="retro-input text-center text-3xl font-mono tracking-widest w-48"
-                  data-testid="input-code"
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={() => startReceiving()}
-              disabled={code.length !== 6}
-              className="retro-button w-full py-3 text-lg"
-              style={{ opacity: code.length === 6 ? 1 : 0.5 }}
-              data-testid="button-receive"
-            >
-              {code.length === 6 ? 'Connect >>' : 'Enter 6-digit code'}
-            </button>
-          </>
-        )}
-
-        {status === 'connecting' && (
-          <div className="text-center">
-            <div className="retro-border p-6">
-              <div style={{ color: 'hsl(var(--text-secondary))' }}>
-                Connecting...
-              </div>
-            </div>
-          </div>
-        )}
-
-        {status === 'waiting' && (
-          <div className="text-center">
-            <div className="retro-border p-6 mb-4">
-              {fileInfo && (
-                <div className="mb-4">
-                  <div style={{ color: 'hsl(var(--accent))' }}>File ready:</div>
-                  <div className="font-bold text-lg">{fileInfo.name}</div>
-                  <div style={{ color: 'hsl(var(--text-secondary))' }}>
-                    {formatFileSize(fileInfo.size)}
-                  </div>
-                </div>
-              )}
-              <div style={{ color: 'hsl(var(--text-secondary))' }}>
-                Waiting for sender to start transfer...
-              </div>
-            </div>
-            <button
-              onClick={resetReceiver}
-              className="retro-button"
-              data-testid="button-cancel"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-
-        {status === 'receiving' && (
-          <div className="text-center">
-            <div className="retro-border p-6 mb-4">
-              <div className="mb-4" style={{ color: 'hsl(var(--accent))' }}>
-                Receiving: {fileInfo?.name}
-              </div>
-              <div className="retro-border-inset p-2 mb-2">
-                <div
-                  className="h-6"
-                  style={{
-                    backgroundColor: 'hsl(var(--accent))',
-                    width: `${progress}%`,
-                    transition: 'width 0.1s linear'
-                  }}
-                />
-              </div>
-              <div className="font-mono" style={{ color: 'hsl(var(--text-secondary))' }}>
-                {progress}%
-              </div>
-            </div>
-          </div>
-        )}
-
-        {status === 'complete' && (
-          <div className="text-center">
-            <div className="retro-border p-6 mb-4">
-              <div className="text-2xl font-bold mb-2" style={{ color: 'hsl(var(--accent))' }}>
-                Download Complete!
-              </div>
-              <div style={{ color: 'hsl(var(--text-secondary))' }}>
-                {fileInfo?.name} has been downloaded.
-              </div>
-            </div>
-            <button
-              onClick={resetReceiver}
-              className="retro-button"
-              data-testid="button-receive-another"
-            >
-              Receive Another File
-            </button>
-          </div>
-        )}
-
+      <div className="h-full flex items-start justify-end gap-6 pr-4">
+        {/* Log terminal - left side */}
         {logs.length > 0 && (
-          <div 
-            className="mt-6 retro-border-inset p-3 max-h-64 overflow-y-auto font-mono text-xs retro-terminal-scroll"
-            style={{ backgroundColor: '#1e1e2e' }}
-          >
-            {logs.map((log) => (
-              <div
-                key={log.id}
-                className="flex gap-2 py-0.5"
-                style={{ fontFamily: 'Consolas, Monaco, monospace' }}
-              >
-                <span style={{ color: '#6272a4' }}>[{formatTime(log.timestamp)}]</span>
-                <span style={{ color: getLogColor(log.type), fontWeight: 'bold' }}>
-                  {getLogPrefix(log.type)}
-                </span>
-                <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
-              </div>
-            ))}
-            <div ref={logsEndRef} />
+          <div className="flex-1 max-w-md h-[400px]">
+            <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+              LOG
+            </div>
+            <div 
+              className="terminal-log p-3 h-full overflow-y-auto"
+            >
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex gap-2 py-0.5"
+                >
+                  <span style={{ color: 'hsl(var(--text-dim))' }}>{formatTime(log.timestamp)}</span>
+                  <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
           </div>
         )}
+
+        {/* Main panels - right side */}
+        <div className="w-72 flex flex-col gap-4">
+          {status === 'idle' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                RECEIVE
+              </div>
+              <div className="minimal-border p-4">
+                <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
+                  enter 6-digit code
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    className="minimal-input flex-1 text-center tracking-[0.3em] text-sm"
+                    data-testid="input-code"
+                  />
+                  <button
+                    onClick={() => startReceiving()}
+                    disabled={code.length !== 6}
+                    className={`minimal-btn px-3 ${code.length === 6 ? 'minimal-btn-accent' : ''}`}
+                    data-testid="button-receive"
+                  >
+                    <ArrowRight size={12} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {status === 'connecting' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                CONNECTING
+              </div>
+              <div className="minimal-border p-4 text-center">
+                <div className="text-xs animate-pulse-subtle" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  connecting...
+                </div>
+              </div>
+            </div>
+          )}
+
+          {status === 'waiting' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                READY
+              </div>
+              <div className="minimal-border-accent p-4">
+                {fileInfo && (
+                  <div className="mb-3">
+                    <div className="text-xs truncate" style={{ color: 'hsl(var(--accent))' }}>
+                      {fileInfo.name}
+                    </div>
+                    <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                      {formatFileSize(fileInfo.size)}
+                    </div>
+                  </div>
+                )}
+                <div className="text-[10px] animate-pulse-subtle" style={{ color: 'hsl(var(--text-dim))' }}>
+                  waiting for sender
+                </div>
+              </div>
+              <button
+                onClick={resetReceiver}
+                className="minimal-btn w-full mt-2"
+                data-testid="button-cancel"
+              >
+                cancel
+              </button>
+            </div>
+          )}
+
+          {status === 'receiving' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                RECEIVING
+              </div>
+              <div className="minimal-border p-4">
+                <div className="text-xs truncate mb-3" style={{ color: 'hsl(var(--accent))' }}>
+                  {fileInfo?.name}
+                </div>
+                <div className="progress-track mb-2">
+                  <div 
+                    className="progress-fill"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-right" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {progress}%
+                </div>
+              </div>
+            </div>
+          )}
+
+          {status === 'complete' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                COMPLETE
+              </div>
+              <div className="minimal-border-accent p-4 text-center">
+                <div className="text-xs mb-1 glow-text" style={{ color: 'hsl(var(--accent))' }}>
+                  download complete
+                </div>
+                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {fileInfo?.name}
+                </div>
+              </div>
+              <button
+                onClick={resetReceiver}
+                className="minimal-btn minimal-btn-accent w-full mt-2"
+                data-testid="button-receive-another"
+              >
+                receive another
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </RetroLayout>
   );
