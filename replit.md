@@ -55,14 +55,15 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 ### Data Schema
 
 **Transfer Sessions Table**
-- `id` - UUID primary key
+- `id` - Auto-increment primary key
 - `code` - Unique 6-digit transfer code
 - `file_name` - Original filename
 - `file_size` - File size in bytes
 - `mime_type` - MIME type
 - `status` - Session status (waiting, connected, transferring, completed, expired)
 - `created_at` - Creation timestamp
-- `expires_at` - Expiration timestamp (30 minutes default)
+- `expires_at` - Expiration timestamp (10 minutes default)
+- `completed_at` - When transfer was completed (stored permanently)
 
 ### API Structure
 
