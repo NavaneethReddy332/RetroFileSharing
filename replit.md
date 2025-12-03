@@ -79,16 +79,18 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 - `transfer-complete` - File transfer finished
 - `error` - Error message
 
-### P2P Transfer Flow
+### P2P Transfer Flow (WebRTC)
 
 1. **Sender**: Selects file, clicks "Generate Code"
 2. **Backend**: Creates session in Turso, returns 6-digit code
 3. **Sender**: Connects to WebSocket, waits for receiver
 4. **Receiver**: Enters 6-digit code, connects to WebSocket
-5. **Backend**: Pairs sender and receiver via code
-6. **Transfer**: Sender sends file in chunks via WebSocket
-7. **Receiver**: Reconstructs file from chunks, triggers download
-8. **Cleanup**: Session marked complete, cleaned up on expiration
+5. **Backend**: Pairs sender and receiver via code, relays WebRTC signaling
+6. **WebRTC Handshake**: SDP offer/answer and ICE candidates exchanged
+7. **Direct P2P**: Data channel established for binary ArrayBuffer streaming
+8. **Transfer**: Binary chunks stream directly peer-to-peer (server not involved)
+9. **Receiver**: Reconstructs file from ArrayBuffer chunks, triggers download
+10. **Cleanup**: Session marked complete, cleaned up on expiration
 
 ### Development & Build Process
 
@@ -195,7 +197,6 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 - WebSocket connection required throughout transfer
 
 **Future Improvements**
-- Binary WebSocket frames for efficiency (currently base64)
 - Zod validation on API endpoints
-- WebRTC for true peer-to-peer (currently relayed through server)
+- TURN server support for NAT traversal in restricted networks
 - Resume support for interrupted transfers
