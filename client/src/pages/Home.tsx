@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2 } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory, TransferRecord } from "../hooks/useTransferHistory";
@@ -36,6 +36,8 @@ export default function Home() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const zipWorkerRef = useRef<Worker | null>(null);
   const [zipProgress, setZipProgress] = useState(0);
+  const [fastMode, setFastMode] = useState(false);
+  const [showFastModeWarning, setShowFastModeWarning] = useState(false);
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -312,7 +314,7 @@ export default function Home() {
             setTotalBytes(fileToSend.size);
             setBytesTransferred(0);
             try {
-              const result = await webrtc.initSender(ws, fileToSend);
+              const result = await webrtc.initSender(ws, fileToSend, fastMode);
               ws.send(JSON.stringify({ type: 'transfer-complete' }));
               
               addRecord({
@@ -445,6 +447,20 @@ export default function Home() {
     }
   };
 
+  const handleFastModeToggle = () => {
+    if (!fastMode) {
+      setShowFastModeWarning(true);
+    } else {
+      setFastMode(false);
+    }
+  };
+
+  const confirmFastMode = () => {
+    setFastMode(true);
+    setShowFastModeWarning(false);
+    addLog('FAST MODE enabled', 'warn');
+  };
+
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
@@ -575,6 +591,37 @@ export default function Home() {
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {files.length > 0 && (
+                  <div className="mt-2 flex items-center justify-between minimal-border p-2">
+                    <div className="flex items-center gap-2">
+                      <Zap 
+                        size={12} 
+                        style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
+                      />
+                      <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
+                        FAST MODE
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleFastModeToggle}
+                      className={`w-8 h-4 rounded-full transition-all relative ${fastMode ? '' : ''}`}
+                      style={{ 
+                        background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
+                        boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
+                      }}
+                      data-testid="toggle-fast-mode"
+                    >
+                      <div 
+                        className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                        style={{ 
+                          background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                          left: fastMode ? '16px' : '2px'
+                        }}
+                      />
+                    </button>
                   </div>
                 )}
 
@@ -859,6 +906,69 @@ export default function Home() {
         )}
       </div>
       <SpeedIndicator currentSpeed={status === 'transferring' && !webrtc.isPaused ? currentSpeed : undefined} />
+      
+      {showFastModeWarning && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0, 0, 0, 0.8)' }}
+        >
+          <div 
+            className="w-80 p-6 minimal-border"
+            style={{ 
+              background: 'hsl(var(--bg))',
+              boxShadow: '0 0 30px hsl(45 100% 50% / 0.2)'
+            }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle size={24} style={{ color: 'hsl(45 100% 50%)' }} />
+              <div className="text-sm font-medium" style={{ color: 'hsl(45 100% 50%)' }}>
+                FAST MODE WARNING
+              </div>
+            </div>
+            
+            <div className="text-xs mb-4 space-y-3" style={{ color: 'hsl(var(--text-secondary))' }}>
+              <p>
+                Fast Mode uses unreliable UDP-like transfer for <span style={{ color: 'hsl(var(--accent))' }}>maximum speed</span>.
+              </p>
+              <p>
+                <span style={{ color: 'hsl(45 100% 50%)' }}>Safety measures included:</span>
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                <li>Chunk sequence tracking</li>
+                <li>Missing chunk detection</li>
+                <li>Automatic retransmission</li>
+                <li>Integrity verification</li>
+              </ul>
+              <p className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                File delivery is guaranteed, but transfer may fall back to requesting missing chunks if network is unstable.
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowFastModeWarning(false)}
+                className="minimal-btn flex-1"
+                data-testid="button-cancel-fast-mode"
+              >
+                cancel
+              </button>
+              <button
+                onClick={confirmFastMode}
+                className="minimal-btn flex-1 flex items-center justify-center gap-2"
+                style={{ 
+                  borderColor: 'hsl(45 100% 50%)',
+                  color: 'hsl(45 100% 50%)',
+                  boxShadow: '0 0 10px hsl(45 100% 50% / 0.3)'
+                }}
+                data-testid="button-confirm-fast-mode"
+              >
+                <Zap size={12} />
+                enable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RetroLayout>
   );
 }

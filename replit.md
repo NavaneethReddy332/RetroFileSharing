@@ -145,6 +145,32 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 3, 2025 - Fast Mode with Data Integrity
+
+**Feature Added**
+- Added Fast Mode toggle for maximum transfer speed with unreliable UDP-like transfer
+- Yellow/gold color scheme distinguishes Fast Mode from standard cyan theme
+- Warning dialog explains safety measures before enabling
+
+**Technical Implementation**
+- Uses `ordered: false, maxRetransmits: 0` for UDP-like unordered delivery
+- 12-byte chunk header: sequence number (4) + data length (4) + CRC32 checksum (4)
+- Separate "control" channel for reliable verification/retransmission messages
+- Receiver tracks missing chunks AND invalid chunks (checksum failures)
+- Up to 5 retransmission rounds before explicit failure
+
+**Data Integrity Guarantees**
+- CRC32 checksum validation on every chunk (polynomial 0xEDB88320)
+- Payload length verification against header
+- Missing chunk detection and retransmission
+- Invalid chunk (corruption) detection and retransmission
+- Both sender and receiver timeout with explicit failure messages
+- No silent success - transfer only completes after explicit verification
+
+**Files Modified**
+- `client/src/hooks/useWebRTC.ts` - Fast mode WebRTC implementation
+- `client/src/pages/Home.tsx` - Fast Mode toggle UI and warning dialog
+
 ### December 3, 2025 - WebRTC Transfer Speed Optimizations
 
 **Optimizations Implemented**
