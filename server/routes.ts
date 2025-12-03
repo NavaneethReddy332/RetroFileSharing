@@ -32,7 +32,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fileSize,
         mimeType,
         code: "",
-        expiresAt,
+        expiresAt: expiresAt.toISOString(),
       });
 
       res.json({

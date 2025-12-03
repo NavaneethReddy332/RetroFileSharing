@@ -54,7 +54,7 @@ export class DatabaseStorage implements IStorage {
     
     if (!session) return undefined;
     
-    if (session.expiresAt <= new Date()) {
+    if (session.expiresAt <= new Date().toISOString()) {
       await this.deleteSession(session.id);
       return undefined;
     }
@@ -72,7 +72,7 @@ export class DatabaseStorage implements IStorage {
 
   async cleanupExpiredSessions(): Promise<void> {
     try {
-      const now = new Date();
+      const now = new Date().toISOString();
       await db.delete(transferSessions).where(lte(transferSessions.expiresAt, now));
     } catch (error) {
       console.error('[CLEANUP] Error during session cleanup:', error);

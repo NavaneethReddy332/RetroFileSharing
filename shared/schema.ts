@@ -1,16 +1,17 @@
-import { pgTable, text, integer, timestamp, serial } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 
-export const transferSessions = pgTable("transfer_sessions", {
-  id: serial("id").primaryKey(),
+export const transferSessions = sqliteTable("transfer_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
   code: text("code").notNull().unique(),
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(),
   mimeType: text("mime_type").notNull(),
   status: text("status").notNull().default("waiting"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  expiresAt: text("expires_at").notNull(),
 });
 
 export const insertTransferSessionSchema = createInsertSchema(transferSessions).omit({
