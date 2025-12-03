@@ -1,8 +1,8 @@
-# QuickSend - P2P File Transfer Application
+# RETRO SEND - P2P File Transfer Application
 
 ## Overview
 
-QuickSend is a peer-to-peer file transfer web application that enables direct, real-time file transfers between users. The application generates a 6-digit code when a sender selects a file, which receivers use to connect and receive the file directly via WebSocket - no cloud storage required. The UI features a clean retro aesthetic with orange and black color scheme.
+RETRO SEND is a peer-to-peer file transfer web application that enables direct, real-time file transfers between users. The application generates a 6-digit code when a sender selects a file, which receivers use to connect and receive the file directly via WebSocket - no cloud storage required. The UI features a unique minimal dark theme with cyan (#00ffff) accent color and glow effects.
 
 ## User Preferences
 
