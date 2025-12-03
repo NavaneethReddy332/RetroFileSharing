@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
 import { ArrowRight } from "lucide-react";
 import { useSearch } from "wouter";
+import { useWebRTC } from "../hooks/useWebRTC";
+import { SpeedIndicator } from "../components/SpeedIndicator";
 
 interface LogEntry {
   id: number;
@@ -19,16 +21,37 @@ export default function Receive() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete'>('idle');
   const [progress, setProgress] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
   const [fileInfo, setFileInfo] = useState<{ name: string; size: number } | null>(null);
+  const [receivedData, setReceivedData] = useState<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const chunksRef = useRef<string[]>([]);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const startTimeRef = useRef<number>(0);
+  const statusRef = useRef(status);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const addLog = (message: string, type: LogEntry['type'] = 'info') => {
     setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
   };
+
+  const webrtc = useWebRTC({
+    onProgress: (percent, speed) => {
+      setProgress(percent);
+      setCurrentSpeed(speed);
+    },
+    onComplete: () => {
+      setCurrentSpeed(0);
+    },
+    onError: (error) => {
+      addLog(error, 'error');
+      setStatus('idle');
+      setCurrentSpeed(0);
+    },
+    onLog: addLog
+  });
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,8 +87,6 @@ export default function Receive() {
     setLogs([]);
     setStatus('connecting');
     addLog('connecting...', 'system');
-    chunksRef.current = [];
-    startTimeRef.current = Date.now();
 
     try {
       const response = await fetch(`/api/session/${activeCode}`);
@@ -86,10 +107,10 @@ export default function Receive() {
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode }));
-        addLog('connected', 'info');
+        addLog('connected to server', 'info');
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
 
         switch (message.type) {
@@ -101,36 +122,31 @@ export default function Receive() {
 
           case 'peer-connected':
             addLog('sender connected', 'success');
+            addLog('establishing P2P...', 'system');
             setStatus('receiving');
-            startTimeRef.current = Date.now();
+            try {
+              const result = await webrtc.initReceiver(ws);
+              setReceivedData(result);
+              saveFile(result.chunks, result.fileInfo);
+              setStatus('complete');
+              ws.send(JSON.stringify({ type: 'transfer-complete' }));
+            } catch (err: any) {
+              addLog(err.message || 'Transfer failed', 'error');
+              setStatus('idle');
+            }
             break;
 
-          case 'chunk':
-            chunksRef.current[message.index] = message.data;
-            const percent = Math.round(((message.index + 1) / message.total) * 100);
-            setProgress(percent);
-            
-            if ((message.index + 1) % 20 === 0 || message.index + 1 === message.total) {
-              const elapsed = (Date.now() - startTimeRef.current) / 1000;
-              const received = chunksRef.current.filter(Boolean).length;
-              const avgSize = fileInfo ? fileInfo.size / message.total : 0;
-              const speed = (received * avgSize) / elapsed / 1024 / 1024;
-              addLog(`${percent}% @ ${speed.toFixed(1)} MB/s`, 'data');
-            }
-            
-            ws.send(JSON.stringify({ type: 'progress', percent }));
+          case 'signal':
+            webrtc.handleSignal(message.data);
             break;
 
           case 'transfer-complete':
-            const totalTime = (Date.now() - startTimeRef.current) / 1000;
-            addLog(`done in ${totalTime.toFixed(1)}s`, 'success');
-            saveFile();
-            setStatus('complete');
             break;
 
           case 'peer-disconnected':
             addLog('sender disconnected', 'error');
             setStatus('idle');
+            webrtc.cleanup();
             break;
 
           case 'error':
@@ -146,7 +162,7 @@ export default function Receive() {
       };
 
       ws.onclose = () => {
-        if (status !== 'complete') {
+        if (statusRef.current !== 'complete') {
           addLog('disconnected', 'warn');
         }
       };
@@ -157,32 +173,21 @@ export default function Receive() {
     }
   };
 
-  const saveFile = () => {
-    if (!fileInfo || chunksRef.current.length === 0) return;
-
+  const saveFile = (chunks: ArrayBuffer[], info: { name: string; size: number; mimeType: string }) => {
     try {
       addLog('processing...', 'system');
-      const binaryChunks = chunksRef.current.map(base64 => {
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
-      });
-
-      const blob = new Blob(binaryChunks);
+      const blob = new Blob(chunks, { type: info.mimeType });
       const url = URL.createObjectURL(blob);
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = fileInfo.name;
+      a.download = info.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      addLog(`saved: ${fileInfo.name}`, 'success');
+      addLog(`saved: ${info.name}`, 'success');
     } catch (error: any) {
       addLog(`${error.message}`, 'error');
     }
@@ -193,12 +198,14 @@ export default function Receive() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    webrtc.cleanup();
     setCode("");
     setStatus('idle');
     setProgress(0);
+    setCurrentSpeed(0);
     setFileInfo(null);
+    setReceivedData(null);
     setLogs([]);
-    chunksRef.current = [];
   };
 
   useEffect(() => {
@@ -206,6 +213,7 @@ export default function Receive() {
       if (wsRef.current) {
         wsRef.current.close();
       }
+      webrtc.cleanup();
     };
   }, []);
 
@@ -223,7 +231,6 @@ export default function Receive() {
   return (
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
-        {/* Main panels - left side */}
         <div className="w-72 flex flex-col gap-4">
           {status === 'idle' && (
             <div>
@@ -315,8 +322,13 @@ export default function Receive() {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <div className="text-[10px] text-right" style={{ color: 'hsl(var(--text-dim))' }}>
-                  {progress}%
+                <div className="flex justify-between text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  <span>{progress}%</span>
+                  {currentSpeed > 0 && (
+                    <span style={{ color: 'hsl(var(--accent))' }}>
+                      {currentSpeed.toFixed(1)} MB/s
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -332,7 +344,7 @@ export default function Receive() {
                   download complete
                 </div>
                 <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                  {fileInfo?.name}
+                  {fileInfo?.name || receivedData?.fileInfo.name}
                 </div>
               </div>
               <button
@@ -346,7 +358,6 @@ export default function Receive() {
           )}
         </div>
 
-        {/* Log terminal - right side */}
         {logs.length > 0 && (
           <div className="flex-1 max-w-md h-[400px]">
             <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
@@ -369,6 +380,7 @@ export default function Receive() {
           </div>
         )}
       </div>
+      <SpeedIndicator currentSpeed={status === 'receiving' ? currentSpeed : undefined} />
     </RetroLayout>
   );
 }
