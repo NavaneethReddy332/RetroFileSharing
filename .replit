@@ -81,7 +81,3 @@ expertMode = true
 [userenv]
 
 [userenv.shared]
-B2_BUCKET_ID = "cb856e581393ba5f9ca0021b"
-B2_BUCKET_NAME = "oldschool-files"
-B2_APPLICATION_KEY_ID = "005b5e833afc02b0000000001"
-B2_APPLICATION_KEY = "K005nMVsX0ByKXEGF6WOMQZ/UsWbkac"
