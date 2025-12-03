@@ -222,31 +222,8 @@ export default function Receive() {
 
   return (
     <RetroLayout>
-      <div className="h-full flex items-start justify-end gap-6 pr-4">
-        {/* Log terminal - left side */}
-        {logs.length > 0 && (
-          <div className="flex-1 max-w-md h-[400px]">
-            <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-              LOG
-            </div>
-            <div 
-              className="terminal-log p-3 h-full overflow-y-auto"
-            >
-              {logs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex gap-2 py-0.5"
-                >
-                  <span style={{ color: 'hsl(var(--text-dim))' }}>{formatTime(log.timestamp)}</span>
-                  <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
-        )}
-
-        {/* Main panels - right side */}
+      <div className="h-full flex items-start justify-start gap-6 pl-4">
+        {/* Main panels - left side */}
         <div className="w-72 flex flex-col gap-4">
           {status === 'idle' && (
             <div>
@@ -368,6 +345,29 @@ export default function Receive() {
             </div>
           )}
         </div>
+
+        {/* Log terminal - right side */}
+        {logs.length > 0 && (
+          <div className="flex-1 max-w-md h-[400px]">
+            <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+              LOG
+            </div>
+            <div 
+              className="terminal-log p-3 h-full overflow-y-auto"
+            >
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex gap-2 py-0.5"
+                >
+                  <span style={{ color: 'hsl(var(--text-dim))' }}>{formatTime(log.timestamp)}</span>
+                  <span style={{ color: getLogColor(log.type) }}>{log.message}</span>
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
       </div>
     </RetroLayout>
   );
