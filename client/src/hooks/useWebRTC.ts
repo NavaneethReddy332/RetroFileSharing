@@ -1,10 +1,11 @@
 import { useRef, useCallback, useState } from 'react';
 
 interface WebRTCConfig {
-  onProgress?: (percent: number, speed: number) => void;
+  onProgress?: (percent: number, speed: number, bytesTransferred: number, totalBytes: number) => void;
   onComplete?: () => void;
   onError?: (error: string) => void;
   onLog?: (message: string, type: 'info' | 'success' | 'error' | 'warn' | 'system' | 'data') => void;
+  onPauseStateChange?: (isPaused: boolean) => void;
 }
 
 const ICE_SERVERS = [
@@ -18,15 +19,70 @@ export function useWebRTC(config: WebRTCConfig) {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isCancelled, setIsCancelled] = useState(false);
   const resolveReceiverRef = useRef<((value: { chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } }) => void) | null>(null);
   const rejectReceiverRef = useRef<((reason: Error) => void) | null>(null);
   const fileRef = useRef<File | null>(null);
   const resolveSenderRef = useRef<(() => void) | null>(null);
   const rejectSenderRef = useRef<((reason: Error) => void) | null>(null);
+  const pauseResolveRef = useRef<(() => void) | null>(null);
+  const isPausedRef = useRef(false);
+  const isCancelledRef = useRef(false);
+  const transferStartTimeRef = useRef<number>(0);
 
   const log = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warn' | 'system' | 'data' = 'info') => {
     config.onLog?.(message, type);
   }, [config]);
+
+  const pause = useCallback(() => {
+    isPausedRef.current = true;
+    setIsPaused(true);
+    config.onPauseStateChange?.(true);
+    log('transfer paused', 'warn');
+  }, [config, log]);
+
+  const resume = useCallback(() => {
+    isPausedRef.current = false;
+    setIsPaused(false);
+    config.onPauseStateChange?.(false);
+    if (pauseResolveRef.current) {
+      pauseResolveRef.current();
+      pauseResolveRef.current = null;
+    }
+    log('transfer resumed', 'success');
+  }, [config, log]);
+
+  const cancel = useCallback(() => {
+    isCancelledRef.current = true;
+    setIsCancelled(true);
+    isPausedRef.current = false;
+    setIsPaused(false);
+    if (pauseResolveRef.current) {
+      pauseResolveRef.current();
+      pauseResolveRef.current = null;
+    }
+    log('transfer cancelled', 'error');
+    
+    if (dataChannelRef.current) {
+      dataChannelRef.current.close();
+      dataChannelRef.current = null;
+    }
+    if (peerRef.current) {
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+  }, [log]);
+
+  const waitIfPaused = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!isPausedRef.current || isCancelledRef.current) {
+        resolve();
+        return;
+      }
+      pauseResolveRef.current = resolve;
+    });
+  }, []);
 
   const createPeerConnection = useCallback((isSender: boolean) => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -63,6 +119,7 @@ export function useWebRTC(config: WebRTCConfig) {
     const totalSize = file.size;
     let offset = 0;
     const startTime = Date.now();
+    transferStartTimeRef.current = startTime;
     let lastSpeedUpdate = startTime;
     let bytesThisSecond = 0;
     let currentSpeed = 0;
@@ -78,6 +135,11 @@ export function useWebRTC(config: WebRTCConfig) {
 
     const sendNextChunk = (): Promise<void> => {
       return new Promise((resolve, reject) => {
+        if (isCancelledRef.current) {
+          reject(new Error('Transfer cancelled'));
+          return;
+        }
+
         const chunk = file.slice(offset, offset + CHUNK_SIZE);
         const reader = new FileReader();
 
@@ -87,9 +149,18 @@ export function useWebRTC(config: WebRTCConfig) {
             return;
           }
 
+          if (isCancelledRef.current) {
+            reject(new Error('Transfer cancelled'));
+            return;
+          }
+
           const arrayBuffer = e.target.result as ArrayBuffer;
           
           while (channel.bufferedAmount > 16 * 1024 * 1024) {
+            if (isCancelledRef.current) {
+              reject(new Error('Transfer cancelled'));
+              return;
+            }
             await new Promise(r => setTimeout(r, 10));
           }
 
@@ -107,7 +178,7 @@ export function useWebRTC(config: WebRTCConfig) {
           }
 
           const percent = Math.round((offset / totalSize) * 100);
-          config.onProgress?.(percent, currentSpeed);
+          config.onProgress?.(percent, currentSpeed, offset, totalSize);
 
           if (elapsed > 0 && elapsed % 1000 < 100) {
             log(`${percent}% @ ${currentSpeed.toFixed(1)} MB/s`, 'data');
@@ -122,6 +193,16 @@ export function useWebRTC(config: WebRTCConfig) {
     };
 
     while (offset < totalSize) {
+      if (isCancelledRef.current) {
+        throw new Error('Transfer cancelled');
+      }
+      
+      await waitIfPaused();
+      
+      if (isCancelledRef.current) {
+        throw new Error('Transfer cancelled');
+      }
+      
       await sendNextChunk();
     }
 
@@ -133,7 +214,9 @@ export function useWebRTC(config: WebRTCConfig) {
     log(`avg: ${avgSpeed.toFixed(2)} MB/s`, 'data');
     
     config.onComplete?.();
-  }, [config, log]);
+    
+    return { duration: totalTime, avgSpeed };
+  }, [config, log, waitIfPaused]);
 
   const handleSignal = useCallback(async (signal: any) => {
     const pc = peerRef.current;
@@ -161,9 +244,13 @@ export function useWebRTC(config: WebRTCConfig) {
     }
   }, [log]);
 
-  const initSender = useCallback(async (ws: WebSocket, file: File): Promise<void> => {
+  const initSender = useCallback(async (ws: WebSocket, file: File): Promise<{ duration: number; avgSpeed: number }> => {
     wsRef.current = ws;
     fileRef.current = file;
+    isPausedRef.current = false;
+    isCancelledRef.current = false;
+    setIsPaused(false);
+    setIsCancelled(false);
     const pc = createPeerConnection(true);
     
     const channel = pc.createDataChannel('fileTransfer', {
@@ -174,22 +261,22 @@ export function useWebRTC(config: WebRTCConfig) {
     dataChannelRef.current = channel;
 
     return new Promise((resolve, reject) => {
-      resolveSenderRef.current = resolve;
+      resolveSenderRef.current = () => resolve({ duration: 0, avgSpeed: 0 });
       rejectSenderRef.current = reject;
 
       channel.onopen = async () => {
         log('data channel open', 'success');
         try {
-          await streamFile(channel, file);
-          resolveSenderRef.current?.();
+          const result = await streamFile(channel, file);
+          resolve(result);
         } catch (err: any) {
-          rejectSenderRef.current?.(err);
+          reject(err);
         }
       };
 
       channel.onerror = () => {
         log('channel error', 'error');
-        rejectSenderRef.current?.(new Error('Data channel error'));
+        reject(new Error('Data channel error'));
       };
 
       pc.createOffer().then(async (offer) => {
@@ -202,18 +289,20 @@ export function useWebRTC(config: WebRTCConfig) {
     });
   }, [createPeerConnection, log, streamFile]);
 
-  const initReceiver = useCallback(async (ws: WebSocket): Promise<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } }> => {
+  const initReceiver = useCallback(async (ws: WebSocket): Promise<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string }, duration: number, avgSpeed: number }> => {
     wsRef.current = ws;
+    isPausedRef.current = false;
+    isCancelledRef.current = false;
+    setIsPaused(false);
+    setIsCancelled(false);
     const pc = createPeerConnection(false);
     
     return new Promise((resolve, reject) => {
-      resolveReceiverRef.current = resolve;
-      rejectReceiverRef.current = reject;
-      
       const chunks: ArrayBuffer[] = [];
       let fileInfo: { name: string; size: number; mimeType: string } | null = null;
       let receivedBytes = 0;
       const startTime = Date.now();
+      transferStartTimeRef.current = startTime;
       let lastSpeedUpdate = startTime;
       let bytesThisSecond = 0;
       let currentSpeed = 0;
@@ -224,7 +313,13 @@ export function useWebRTC(config: WebRTCConfig) {
         dataChannelRef.current = channel;
         log('data channel received', 'success');
 
-        channel.onmessage = (e) => {
+        channel.onmessage = async (e) => {
+          if (isCancelledRef.current) {
+            channel.close();
+            reject(new Error('Transfer cancelled'));
+            return;
+          }
+
           if (typeof e.data === 'string') {
             const message = JSON.parse(e.data);
             
@@ -244,7 +339,7 @@ export function useWebRTC(config: WebRTCConfig) {
               
               if (fileInfo) {
                 config.onComplete?.();
-                resolveReceiverRef.current?.({ chunks, fileInfo });
+                resolve({ chunks, fileInfo, duration: totalTime, avgSpeed });
               }
             }
           } else {
@@ -263,7 +358,7 @@ export function useWebRTC(config: WebRTCConfig) {
 
             if (fileInfo) {
               const percent = Math.round((receivedBytes / fileInfo.size) * 100);
-              config.onProgress?.(percent, currentSpeed);
+              config.onProgress?.(percent, currentSpeed, receivedBytes, fileInfo.size);
               
               const elapsed = now - startTime;
               if (elapsed > 0 && elapsed % 1000 < 100) {
@@ -275,9 +370,11 @@ export function useWebRTC(config: WebRTCConfig) {
 
         channel.onerror = () => {
           log('channel error', 'error');
-          rejectReceiverRef.current?.(new Error('Data channel error'));
+          reject(new Error('Data channel error'));
         };
       };
+
+      rejectReceiverRef.current = reject;
     });
   }, [createPeerConnection, config, log]);
 
@@ -296,7 +393,12 @@ export function useWebRTC(config: WebRTCConfig) {
     rejectReceiverRef.current = null;
     resolveSenderRef.current = null;
     rejectSenderRef.current = null;
+    pauseResolveRef.current = null;
+    isPausedRef.current = false;
+    isCancelledRef.current = false;
     setIsConnected(false);
+    setIsPaused(false);
+    setIsCancelled(false);
   }, []);
 
   return {
@@ -305,6 +407,11 @@ export function useWebRTC(config: WebRTCConfig) {
     handleSignal,
     cleanup,
     isConnected,
+    isPaused,
+    isCancelled,
+    pause,
+    resume,
+    cancel,
   };
 }
 

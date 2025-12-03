@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { ArrowRight, CheckCircle, Clock } from "lucide-react";
+import { ArrowRight, CheckCircle, Clock, Pause, Play, X, Trash2 } from "lucide-react";
 import { useSearch } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
+import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
 
 interface LogEntry {
@@ -26,16 +27,21 @@ export default function Receive() {
   
   const [code, setCode] = useState(initialCode);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete' | 'already-completed' | 'expired'>('idle');
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete' | 'already-completed' | 'expired' | 'cancelled'>('idle');
   const [progress, setProgress] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [bytesTransferred, setBytesTransferred] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
   const [fileInfo, setFileInfo] = useState<{ name: string; size: number } | null>(null);
   const [receivedData, setReceivedData] = useState<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } } | null>(null);
   const [completedSession, setCompletedSession] = useState<CompletedSessionInfo | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef(status);
+  const currentCodeRef = useRef<string>('');
+  const { history, addRecord, clearHistory, getRecentReceives } = useTransferHistory();
 
   useEffect(() => {
     statusRef.current = status;
@@ -46,16 +52,22 @@ export default function Receive() {
   };
 
   const webrtc = useWebRTC({
-    onProgress: (percent, speed) => {
+    onProgress: (percent, speed, transferred, total) => {
       setProgress(percent);
       setCurrentSpeed(speed);
+      setBytesTransferred(transferred);
+      setTotalBytes(total);
     },
     onComplete: () => {
       setCurrentSpeed(0);
     },
     onError: (error) => {
       addLog(error, 'error');
-      setStatus('idle');
+      if (error.includes('cancelled')) {
+        setStatus('cancelled');
+      } else {
+        setStatus('idle');
+      }
       setCurrentSpeed(0);
     },
     onLog: addLog
@@ -85,6 +97,24 @@ export default function Receive() {
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const formatTimeRemaining = (bytesRemaining: number, speedMBps: number): string => {
+    if (speedMBps <= 0) return 'calculating...';
+    const bytesPerSecond = speedMBps * 1024 * 1024;
+    const seconds = bytesRemaining / bytesPerSecond;
+    
+    if (seconds < 60) {
+      return `~${Math.ceil(seconds)}s left`;
+    } else if (seconds < 3600) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.ceil(seconds % 60);
+      return `~${mins}m ${secs}s left`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const mins = Math.ceil((seconds % 3600) / 60);
+      return `~${hours}h ${mins}m left`;
+    }
+  };
+
   const formatCompletedDate = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -100,6 +130,29 @@ export default function Receive() {
     return date.toLocaleDateString();
   };
 
+  const formatHistoryDate = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getStatusColor = (recordStatus: string) => {
+    switch (recordStatus) {
+      case 'completed': return 'hsl(var(--accent))';
+      case 'cancelled': return 'hsl(45 80% 55%)';
+      case 'failed': return 'hsl(0 65% 55%)';
+      default: return 'hsl(var(--text-dim))';
+    }
+  };
+
   const startReceiving = async (codeToUse?: string) => {
     const activeCode = codeToUse || code;
     if (activeCode.length !== 6) {
@@ -107,6 +160,7 @@ export default function Receive() {
       return;
     }
 
+    currentCodeRef.current = activeCode;
     setLogs([]);
     setStatus('connecting');
     setCompletedSession(null);
@@ -144,6 +198,7 @@ export default function Receive() {
 
       const session = await response.json();
       setFileInfo({ name: session.fileName, size: session.fileSize });
+      setTotalBytes(session.fileSize);
       addLog(`file: ${session.fileName}`, 'success');
       addLog(`${formatFileSize(session.fileSize)}`, 'data');
 
@@ -176,9 +231,42 @@ export default function Receive() {
               saveFile(result.chunks, result.fileInfo);
               setStatus('complete');
               ws.send(JSON.stringify({ type: 'transfer-complete' }));
+              
+              addRecord({
+                type: 'receive',
+                fileName: result.fileInfo.name,
+                fileSize: result.fileInfo.size,
+                code: currentCodeRef.current,
+                status: 'completed',
+                duration: result.duration,
+                avgSpeed: result.avgSpeed
+              });
             } catch (err: any) {
-              addLog(err.message || 'Transfer failed', 'error');
-              setStatus('idle');
+              if (err.message?.includes('cancelled')) {
+                addLog('transfer cancelled', 'error');
+                setStatus('cancelled');
+                if (fileInfo) {
+                  addRecord({
+                    type: 'receive',
+                    fileName: fileInfo.name,
+                    fileSize: fileInfo.size,
+                    code: currentCodeRef.current,
+                    status: 'cancelled'
+                  });
+                }
+              } else {
+                addLog(err.message || 'Transfer failed', 'error');
+                setStatus('idle');
+                if (fileInfo) {
+                  addRecord({
+                    type: 'receive',
+                    fileName: fileInfo.name,
+                    fileSize: fileInfo.size,
+                    code: currentCodeRef.current,
+                    status: 'failed'
+                  });
+                }
+              }
             }
             break;
 
@@ -208,7 +296,7 @@ export default function Receive() {
       };
 
       ws.onclose = () => {
-        if (statusRef.current !== 'complete') {
+        if (statusRef.current !== 'complete' && statusRef.current !== 'cancelled') {
           addLog('disconnected', 'warn');
         }
       };
@@ -239,6 +327,22 @@ export default function Receive() {
     }
   };
 
+  const handlePauseResume = () => {
+    if (webrtc.isPaused) {
+      webrtc.resume();
+    } else {
+      webrtc.pause();
+    }
+  };
+
+  const handleCancel = () => {
+    webrtc.cancel();
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  };
+
   const resetReceiver = () => {
     if (wsRef.current) {
       wsRef.current.close();
@@ -249,6 +353,8 @@ export default function Receive() {
     setStatus('idle');
     setProgress(0);
     setCurrentSpeed(0);
+    setBytesTransferred(0);
+    setTotalBytes(0);
     setFileInfo(null);
     setReceivedData(null);
     setCompletedSession(null);
@@ -275,40 +381,101 @@ export default function Receive() {
     }
   };
 
+  const bytesRemaining = totalBytes - bytesTransferred;
+
   return (
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
         <div className="w-72 flex flex-col gap-4">
           {status === 'idle' && (
-            <div>
-              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-                RECEIVE
-              </div>
-              <div className="minimal-border p-4">
-                <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
-                  enter 6-digit code
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    className="minimal-input flex-1 text-center tracking-[0.3em] text-sm"
-                    data-testid="input-code"
-                  />
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                    RECEIVE
+                  </div>
                   <button
-                    onClick={() => startReceiving()}
-                    disabled={code.length !== 6}
-                    className={`minimal-btn px-3 ${code.length === 6 ? 'minimal-btn-accent' : ''}`}
-                    data-testid="button-receive"
+                    onClick={() => setShowHistory(!showHistory)}
+                    className="text-[9px] tracking-wider transition-colors"
+                    style={{ color: showHistory ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}
+                    data-testid="button-toggle-history"
                   >
-                    <ArrowRight size={12} />
+                    {showHistory ? 'HIDE HISTORY' : 'HISTORY'}
                   </button>
                 </div>
+                <div className="minimal-border p-4">
+                  <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
+                    enter 6-digit code
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="minimal-input flex-1 text-center tracking-[0.3em] text-sm"
+                      data-testid="input-code"
+                    />
+                    <button
+                      onClick={() => startReceiving()}
+                      disabled={code.length !== 6}
+                      className={`minimal-btn px-3 ${code.length === 6 ? 'minimal-btn-accent' : ''}`}
+                      data-testid="button-receive"
+                    >
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+
+              {showHistory && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                      RECENT TRANSFERS
+                    </div>
+                    {history.length > 0 && (
+                      <button
+                        onClick={clearHistory}
+                        className="text-[9px] transition-colors"
+                        style={{ color: 'hsl(0 65% 55%)' }}
+                        data-testid="button-clear-history"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="minimal-border p-2 max-h-40 overflow-y-auto">
+                    {history.length === 0 ? (
+                      <div className="text-[10px] text-center py-2" style={{ color: 'hsl(var(--text-dim))' }}>
+                        no transfers yet
+                      </div>
+                    ) : (
+                      history.slice(0, 10).map((record) => (
+                        <div key={record.id} className="py-1.5 border-b last:border-b-0" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] truncate" style={{ color: 'hsl(var(--text-secondary))' }}>
+                                {record.fileName}
+                              </div>
+                              <div className="flex items-center gap-2 text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                                <span>{record.type === 'send' ? 'sent' : 'received'}</span>
+                                <span>{formatFileSize(record.fileSize)}</span>
+                                <span style={{ color: getStatusColor(record.status) }}>{record.status}</span>
+                              </div>
+                            </div>
+                            <div className="text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                              {formatHistoryDate(record.timestamp)}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {status === 'connecting' && (
@@ -416,7 +583,7 @@ export default function Receive() {
           {status === 'receiving' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-                RECEIVING
+                RECEIVING {webrtc.isPaused && '(PAUSED)'}
               </div>
               <div className="minimal-border p-4">
                 <div className="text-xs truncate mb-3" style={{ color: 'hsl(var(--accent))' }}>
@@ -428,14 +595,39 @@ export default function Receive() {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                <div className="flex justify-between text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
                   <span>{progress}%</span>
-                  {currentSpeed > 0 && (
+                  {currentSpeed > 0 && !webrtc.isPaused && (
                     <span style={{ color: 'hsl(var(--accent))' }}>
                       {currentSpeed.toFixed(1)} MB/s
                     </span>
                   )}
                 </div>
+                {currentSpeed > 0 && bytesRemaining > 0 && !webrtc.isPaused && (
+                  <div className="flex items-center gap-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    <Clock size={10} />
+                    <span>{formatTimeRemaining(bytesRemaining, currentSpeed)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={handlePauseResume}
+                  className="minimal-btn flex-1 flex items-center justify-center gap-2 minimal-btn-accent"
+                  data-testid="button-pause-resume"
+                >
+                  {webrtc.isPaused ? <Play size={12} /> : <Pause size={12} />}
+                  {webrtc.isPaused ? 'resume' : 'pause'}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="minimal-btn flex-1 flex items-center justify-center gap-2"
+                  style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
+                  data-testid="button-cancel-transfer"
+                >
+                  <X size={12} />
+                  cancel
+                </button>
               </div>
             </div>
           )}
@@ -459,6 +651,29 @@ export default function Receive() {
                 data-testid="button-receive-another"
               >
                 receive another
+              </button>
+            </div>
+          )}
+
+          {status === 'cancelled' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                CANCELLED
+              </div>
+              <div className="minimal-border p-4 text-center">
+                <div className="text-xs mb-1" style={{ color: 'hsl(45 80% 55%)' }}>
+                  transfer cancelled
+                </div>
+                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {fileInfo?.name}
+                </div>
+              </div>
+              <button
+                onClick={resetReceiver}
+                className="minimal-btn minimal-btn-accent w-full mt-2"
+                data-testid="button-try-again"
+              >
+                try again
               </button>
             </div>
           )}
@@ -486,7 +701,7 @@ export default function Receive() {
           </div>
         )}
       </div>
-      <SpeedIndicator currentSpeed={status === 'receiving' ? currentSpeed : undefined} />
+      <SpeedIndicator currentSpeed={status === 'receiving' && !webrtc.isPaused ? currentSpeed : undefined} />
     </RetroLayout>
   );
 }
