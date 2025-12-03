@@ -142,6 +142,23 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 3, 2025 - Turso Database Migration
+
+**Database Changes**
+- Migrated from PostgreSQL to Turso (LibSQL/SQLite) exclusively
+- Removed all PostgreSQL dependencies and automatic Replit database provisioning
+- Project now uses only Turso for session metadata storage
+- When forked to other accounts, the project will NOT automatically change databases
+
+**Required Secrets**
+- `TURSO_DATABASE_URL` - Turso database connection URL
+- `TURSO_AUTH_TOKEN` - Turso authentication token
+
+**Technical Notes**
+- Dates stored as ISO strings in SQLite (text columns)
+- Schema uses SQLite-compatible types (sqliteTable, integer with autoIncrement)
+- Drizzle ORM configured with `dialect: "turso"` driver
+
 ### December 1, 2025 - P2P File Transfer System
 
 **Major Rewrite**
