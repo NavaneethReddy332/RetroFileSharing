@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory, TransferRecord } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
-import JSZip from "jszip";
+import ZipWorker from "../workers/zipWorker?worker";
 
 interface LogEntry {
   id: number;
@@ -34,6 +34,8 @@ export default function Home() {
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const zipWorkerRef = useRef<Worker | null>(null);
+  const [zipProgress, setZipProgress] = useState(0);
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -163,28 +165,76 @@ export default function Home() {
     }
   };
 
+  const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
   const createZipFile = async (filesToZip: File[]): Promise<File> => {
-    const zip = new JSZip();
-    
-    for (const file of filesToZip) {
-      const arrayBuffer = await file.arrayBuffer();
-      zip.file(file.name, arrayBuffer);
-    }
+    return new Promise(async (resolve, reject) => {
+      const worker = new ZipWorker();
+      zipWorkerRef.current = worker;
+      
+      const zipFileName = filesToZip.length > 1 
+        ? `retrosend_${Date.now()}.zip`
+        : `${filesToZip[0].name.replace(/\.[^/.]+$/, '')}.zip`;
 
-    const zipBlob = await zip.generateAsync({ 
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
-    }, (metadata) => {
-      const percent = Math.round(metadata.percent);
-      addLog(`compressing: ${percent}%`, 'data');
+      const fileDataArray: { name: string; data: ArrayBuffer }[] = [];
+      
+      addLog('reading files...', 'data');
+      
+      for (let i = 0; i < filesToZip.length; i++) {
+        const file = filesToZip[i];
+        const arrayBuffer = await file.arrayBuffer();
+        fileDataArray.push({ name: file.name, data: arrayBuffer });
+        
+        const readPercent = Math.round(((i + 1) / filesToZip.length) * 15);
+        setZipProgress(readPercent);
+        
+        await yieldToMain();
+      }
+
+      worker.onmessage = (e) => {
+        const { type, percent, blob, fileName, message, phase } = e.data;
+        
+        if (type === 'progress') {
+          const adjustedPercent = 15 + Math.round(percent * 0.85);
+          setZipProgress(Math.min(adjustedPercent, 100));
+        } else if (type === 'complete') {
+          worker.terminate();
+          zipWorkerRef.current = null;
+          setZipProgress(0);
+          const zipFile = new File([blob], fileName, { type: 'application/zip' });
+          resolve(zipFile);
+        } else if (type === 'error') {
+          worker.terminate();
+          zipWorkerRef.current = null;
+          setZipProgress(0);
+          reject(new Error(message));
+        } else if (type === 'cancelled') {
+          worker.terminate();
+          zipWorkerRef.current = null;
+          setZipProgress(0);
+          reject(new Error('cancelled'));
+        }
+      };
+
+      worker.onerror = (error) => {
+        worker.terminate();
+        zipWorkerRef.current = null;
+        setZipProgress(0);
+        reject(new Error('Worker error: ' + error.message));
+      };
+
+      worker.postMessage({
+        type: 'start',
+        files: fileDataArray,
+        zipFileName
+      });
     });
+  };
 
-    const zipFileName = filesToZip.length > 1 
-      ? `retrosend_${Date.now()}.zip`
-      : `${filesToZip[0].name.replace(/\.[^/.]+$/, '')}.zip`;
-
-    return new File([zipBlob], zipFileName, { type: 'application/zip' });
+  const cancelZipping = () => {
+    if (zipWorkerRef.current) {
+      zipWorkerRef.current.postMessage({ type: 'cancel' });
+    }
   };
 
   const startSending = async () => {
@@ -370,12 +420,18 @@ export default function Home() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    if (zipWorkerRef.current) {
+      zipWorkerRef.current.postMessage({ type: 'cancel' });
+      zipWorkerRef.current.terminate();
+      zipWorkerRef.current = null;
+    }
     webrtc.cleanup();
     setFiles([]);
     setZipFile(null);
     setCode("");
     setStatus('idle');
     setProgress(0);
+    setZipProgress(0);
     setCurrentSpeed(0);
     setBytesTransferred(0);
     setTotalBytes(0);
@@ -397,6 +453,9 @@ export default function Home() {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      if (zipWorkerRef.current) {
+        zipWorkerRef.current.terminate();
       }
       webrtc.cleanup();
     };
@@ -613,11 +672,22 @@ export default function Home() {
               </div>
               <div className="minimal-border p-4 text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
-                  <FileArchive size={16} style={{ color: 'hsl(var(--accent))' }} className="animate-pulse-subtle" />
+                  <FileArchive size={16} style={{ color: 'hsl(var(--accent))' }} />
                 </div>
-                <div className="text-xs animate-pulse-subtle" style={{ color: 'hsl(var(--text-secondary))' }}>
-                  compressing {files.length} files...
+                <div className="text-xs mb-2" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  compressing {files.length} files... {zipProgress > 0 ? `${zipProgress}%` : ''}
                 </div>
+                {zipProgress > 0 && (
+                  <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
+                    <div 
+                      className="h-full transition-all duration-200" 
+                      style={{ 
+                        width: `${zipProgress}%`, 
+                        background: 'hsl(var(--accent))' 
+                      }} 
+                    />
+                  </div>
+                )}
               </div>
               <button
                 onClick={resetSender}
