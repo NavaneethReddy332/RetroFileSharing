@@ -145,6 +145,25 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 3, 2025 - Multi-File ZIP Performance Optimization
+
+**Problem Fixed**
+- System and website lagging when sending multiple files
+- Very slow transfer speeds for multi-file ZIP creation compared to single files
+
+**Solution Implemented**
+- Created Web Worker (`client/src/workers/zipWorker.ts`) to offload ZIP compression off the main UI thread
+- Reduced compression level from 6 to 1 for faster processing
+- Throttled progress updates to 200ms intervals to reduce React re-render overhead
+- Added yield-to-main mechanism during file reading to keep UI responsive
+- Implemented proper cancel message flow for clean cancellation
+
+**Technical Details**
+- ZIP compression now runs in a separate thread, preventing UI freezing
+- Progress bar shows during compression with phase indicators
+- Cancel button properly signals the worker before terminating
+- File reading yields control back to the main thread between files
+
 ### December 3, 2025 - Turso Database Migration
 
 **Database Changes**
