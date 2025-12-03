@@ -14,6 +14,10 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
+const CHUNK_SIZE = 32 * 1024;
+const MAX_BUFFER_SIZE = 16 * 1024 * 1024;
+const LOW_BUFFER_THRESHOLD = MAX_BUFFER_SIZE / 2;
+
 export function useWebRTC(config: WebRTCConfig) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -85,7 +89,10 @@ export function useWebRTC(config: WebRTCConfig) {
   }, []);
 
   const createPeerConnection = useCallback((isSender: boolean) => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ 
+      iceServers: ICE_SERVERS,
+      iceCandidatePoolSize: 10,
+    });
     
     pc.onicecandidate = (event) => {
       if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -115,7 +122,6 @@ export function useWebRTC(config: WebRTCConfig) {
   }, [log, config]);
 
   const streamFile = useCallback(async (channel: RTCDataChannel, file: File) => {
-    const CHUNK_SIZE = 64 * 1024;
     const totalSize = file.size;
     let offset = 0;
     const startTime = Date.now();
@@ -123,6 +129,8 @@ export function useWebRTC(config: WebRTCConfig) {
     let lastSpeedUpdate = startTime;
     let bytesThisSecond = 0;
     let currentSpeed = 0;
+
+    channel.bufferedAmountLowThreshold = LOW_BUFFER_THRESHOLD;
 
     channel.send(JSON.stringify({
       type: 'file-info',
@@ -133,60 +141,39 @@ export function useWebRTC(config: WebRTCConfig) {
 
     log(`streaming ${formatSize(totalSize)}...`, 'system');
 
-    const sendNextChunk = (): Promise<void> => {
+    const waitForBuffer = (): Promise<void> => {
       return new Promise((resolve, reject) => {
-        if (isCancelledRef.current) {
-          reject(new Error('Transfer cancelled'));
+        if (isCancelledRef.current || channel.readyState !== 'open') {
+          reject(new Error('Transfer cancelled or channel closed'));
           return;
         }
-
-        const chunk = file.slice(offset, offset + CHUNK_SIZE);
-        const reader = new FileReader();
-
-        reader.onload = async (e) => {
-          if (!e.target?.result) {
-            reject(new Error('Failed to read chunk'));
-            return;
-          }
-
+        if (channel.bufferedAmount < LOW_BUFFER_THRESHOLD) {
+          resolve();
+          return;
+        }
+        const handler = () => {
+          channel.removeEventListener('bufferedamountlow', handler);
           if (isCancelledRef.current) {
             reject(new Error('Transfer cancelled'));
-            return;
+          } else {
+            resolve();
           }
-
-          const arrayBuffer = e.target.result as ArrayBuffer;
-          
-          while (channel.bufferedAmount > 16 * 1024 * 1024) {
-            if (isCancelledRef.current) {
-              reject(new Error('Transfer cancelled'));
-              return;
-            }
-            await new Promise(r => setTimeout(r, 10));
-          }
-
-          channel.send(arrayBuffer);
-          offset += arrayBuffer.byteLength;
-          bytesThisSecond += arrayBuffer.byteLength;
-
-          const now = Date.now();
-          const elapsed = now - startTime;
-          
-          if (now - lastSpeedUpdate >= 200) {
-            currentSpeed = (bytesThisSecond / ((now - lastSpeedUpdate) / 1000)) / (1024 * 1024);
-            bytesThisSecond = 0;
-            lastSpeedUpdate = now;
-          }
-
-          const percent = Math.round((offset / totalSize) * 100);
-          config.onProgress?.(percent, currentSpeed, offset, totalSize);
-
-          if (elapsed > 0 && elapsed % 1000 < 100) {
-            log(`${percent}% @ ${currentSpeed.toFixed(1)} MB/s`, 'data');
-          }
-
-          resolve();
         };
+        channel.addEventListener('bufferedamountlow', handler);
+      });
+    };
 
+    const readChunk = (start: number, end: number): Promise<ArrayBuffer> => {
+      return new Promise((resolve, reject) => {
+        const chunk = file.slice(start, end);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            resolve(e.target.result as ArrayBuffer);
+          } else {
+            reject(new Error('Failed to read chunk'));
+          }
+        };
         reader.onerror = () => reject(reader.error);
         reader.readAsArrayBuffer(chunk);
       });
@@ -202,8 +189,33 @@ export function useWebRTC(config: WebRTCConfig) {
       if (isCancelledRef.current) {
         throw new Error('Transfer cancelled');
       }
+
+      if (channel.bufferedAmount >= MAX_BUFFER_SIZE) {
+        await waitForBuffer();
+      }
+
+      const chunkEnd = Math.min(offset + CHUNK_SIZE, totalSize);
+      const arrayBuffer = await readChunk(offset, chunkEnd);
       
-      await sendNextChunk();
+      channel.send(arrayBuffer);
+      offset += arrayBuffer.byteLength;
+      bytesThisSecond += arrayBuffer.byteLength;
+
+      const now = Date.now();
+      const elapsed = now - startTime;
+      
+      if (now - lastSpeedUpdate >= 200) {
+        currentSpeed = (bytesThisSecond / ((now - lastSpeedUpdate) / 1000)) / (1024 * 1024);
+        bytesThisSecond = 0;
+        lastSpeedUpdate = now;
+      }
+
+      const percent = Math.round((offset / totalSize) * 100);
+      config.onProgress?.(percent, currentSpeed, offset, totalSize);
+
+      if (elapsed > 0 && elapsed % 1000 < 100) {
+        log(`${percent}% @ ${currentSpeed.toFixed(1)} MB/s`, 'data');
+      }
     }
 
     channel.send(JSON.stringify({ type: 'transfer-complete' }));
