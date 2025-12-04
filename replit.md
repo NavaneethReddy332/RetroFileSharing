@@ -145,6 +145,33 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 4, 2025 - P2P Transfer Speed Optimization
+
+**Problem Addressed**
+- Users experiencing slow transfer speeds (under 10Mbps) despite having 100+ Mbps internet
+
+**Optimizations Implemented**
+- Increased chunk sizes: 64KB (normal) and 256KB (fast mode) for better throughput
+- Added batch file reading: reads 8-16 chunks in parallel using Promise.all
+- Replaced slow FileReader with native blob.arrayBuffer() for faster file reading
+- Optimized buffer thresholds: 4MB high threshold, 1MB low threshold for smoother flow control
+- Updated speed display to 100ms intervals for more responsive feedback
+
+**Technical Changes**
+- `CHUNK_SIZE`: 32KB → 64KB
+- `FAST_CHUNK_SIZE`: 64KB → 256KB  
+- `HIGH_BUFFER_THRESHOLD`: New 4MB threshold for batch sending
+- `LOW_BUFFER_THRESHOLD`: 8MB → 1MB for faster buffer drain
+- Batch reading: Reads multiple chunks simultaneously before sending
+
+**Expected Performance**
+- Same WiFi: 40-100+ Mbps
+- Same LAN: 80-200+ Mbps
+- Different networks: 20-50+ Mbps (limited by actual bandwidth)
+
+**Files Modified**
+- `client/src/hooks/useWebRTC.ts` - Core transfer optimizations
+
 ### December 4, 2025 - Security Hardening & Code Consolidation
 
 **Security Improvements**
