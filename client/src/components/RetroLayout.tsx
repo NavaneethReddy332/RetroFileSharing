@@ -105,6 +105,48 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           {children}
         </main>
 
+        {/* Powered by Replit section */}
+        <div 
+          className="px-5 py-3 flex items-center justify-center gap-2"
+          style={{ color: 'hsl(var(--text-dim))' }}
+        >
+          <span className="text-[10px] tracking-wider">POWERED BY</span>
+          <a 
+            href="https://replit.com" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 transition-opacity hover:opacity-80"
+            data-testid="link-replit"
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 32 32" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path 
+                d="M7 5.5C7 4.67157 7.67157 4 8.5 4H15.5C16.3284 4 17 4.67157 17 5.5V12H8.5C7.67157 12 7 11.3284 7 10.5V5.5Z" 
+                fill="hsl(var(--accent))"
+              />
+              <path 
+                d="M17 12H25.5C26.3284 12 27 12.6716 27 13.5V18.5C27 19.3284 26.3284 20 25.5 20H17V12Z" 
+                fill="hsl(var(--accent))"
+              />
+              <path 
+                d="M7 21.5C7 20.6716 7.67157 20 8.5 20H17V28H8.5C7.67157 28 7 27.3284 7 26.5V21.5Z" 
+                fill="hsl(var(--accent))"
+              />
+            </svg>
+            <span 
+              className="text-[11px] font-medium tracking-wider"
+              style={{ color: 'hsl(var(--accent))' }}
+            >
+              REPLIT
+            </span>
+          </a>
+        </div>
+
         {/* Minimal footer */}
         <footer 
           className="px-5 py-2 text-center border-t" 
