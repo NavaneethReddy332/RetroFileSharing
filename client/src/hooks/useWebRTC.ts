@@ -32,10 +32,11 @@ function getIceServers(): RTCIceServer[] {
   return servers;
 }
 
-const CHUNK_SIZE = 32 * 1024;
-const FAST_CHUNK_SIZE = 64 * 1024;
+const CHUNK_SIZE = 64 * 1024;
+const FAST_CHUNK_SIZE = 256 * 1024;
 const MAX_BUFFER_SIZE = 16 * 1024 * 1024;
-const LOW_BUFFER_THRESHOLD = MAX_BUFFER_SIZE / 2;
+const LOW_BUFFER_THRESHOLD = 1 * 1024 * 1024;
+const HIGH_BUFFER_THRESHOLD = 4 * 1024 * 1024;
 const HEADER_SIZE = 12;
 const MAX_RETRANSMIT_ROUNDS = 5;
 const RETRANSMIT_TIMEOUT = 10000;
@@ -251,22 +252,13 @@ export function useWebRTC(config: WebRTCConfig) {
       });
     };
 
-    const readChunk = (start: number, end: number): Promise<ArrayBuffer> => {
-      return new Promise((resolve, reject) => {
-        const chunk = file.slice(start, end);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            resolve(e.target.result as ArrayBuffer);
-          } else {
-            reject(new Error('Failed to read chunk'));
-          }
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsArrayBuffer(chunk);
-      });
+    const readChunkFast = async (start: number, end: number): Promise<ArrayBuffer> => {
+      const blob = file.slice(start, end);
+      return await blob.arrayBuffer();
     };
 
+    const BATCH_SIZE = fastMode ? 16 : 8;
+    
     while (offset < totalSize) {
       if (isCancelledRef.current) {
         throw new Error('Transfer cancelled');
@@ -278,29 +270,47 @@ export function useWebRTC(config: WebRTCConfig) {
         throw new Error('Transfer cancelled');
       }
 
-      if (channel.bufferedAmount >= MAX_BUFFER_SIZE) {
+      if (channel.bufferedAmount >= HIGH_BUFFER_THRESHOLD) {
         await waitForBuffer();
       }
 
-      const chunkEnd = Math.min(offset + chunkSize, totalSize);
-      const arrayBuffer = await readChunk(offset, chunkEnd);
+      const chunksToSend = Math.min(BATCH_SIZE, Math.ceil((totalSize - offset) / chunkSize));
+      const readPromises: Promise<ArrayBuffer>[] = [];
+      const chunkRanges: { start: number; end: number; index: number }[] = [];
       
-      if (fastMode) {
-        chunkCacheRef.current.set(chunkIndex, arrayBuffer);
-        const packetWithHeader = createChunkWithHeader(chunkIndex, arrayBuffer);
-        channel.send(packetWithHeader);
-      } else {
-        channel.send(arrayBuffer);
+      for (let i = 0; i < chunksToSend; i++) {
+        const chunkStart = offset + (i * chunkSize);
+        if (chunkStart >= totalSize) break;
+        const chunkEnd = Math.min(chunkStart + chunkSize, totalSize);
+        chunkRanges.push({ start: chunkStart, end: chunkEnd, index: chunkIndex + i });
+        readPromises.push(readChunkFast(chunkStart, chunkEnd));
+      }
+
+      const buffers = await Promise.all(readPromises);
+      
+      for (let i = 0; i < buffers.length; i++) {
+        const arrayBuffer = buffers[i];
+        const currentChunkIndex = chunkRanges[i].index;
+        
+        if (fastMode) {
+          chunkCacheRef.current.set(currentChunkIndex, arrayBuffer);
+          const packetWithHeader = createChunkWithHeader(currentChunkIndex, arrayBuffer);
+          channel.send(packetWithHeader);
+        } else {
+          channel.send(arrayBuffer);
+        }
+        
+        bytesThisSecond += arrayBuffer.byteLength;
       }
       
-      offset += arrayBuffer.byteLength;
-      bytesThisSecond += arrayBuffer.byteLength;
-      chunkIndex++;
+      const totalBytesRead = buffers.reduce((sum, buf) => sum + buf.byteLength, 0);
+      offset += totalBytesRead;
+      chunkIndex += buffers.length;
 
       const now = Date.now();
       const elapsed = now - startTime;
       
-      if (now - lastSpeedUpdate >= 200) {
+      if (now - lastSpeedUpdate >= 100) {
         currentSpeed = (bytesThisSecond / ((now - lastSpeedUpdate) / 1000)) / (1024 * 1024);
         bytesThisSecond = 0;
         lastSpeedUpdate = now;
@@ -309,7 +319,7 @@ export function useWebRTC(config: WebRTCConfig) {
       const percent = Math.round((offset / totalSize) * 100);
       config.onProgress?.(percent, currentSpeed, offset, totalSize);
 
-      if (elapsed > 0 && elapsed % 1000 < 100) {
+      if (elapsed > 0 && elapsed % 1000 < 50) {
         log(`${percent}% @ ${currentSpeed.toFixed(1)} MB/s`, 'data');
       }
     }
