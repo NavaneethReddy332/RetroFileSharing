@@ -519,32 +519,15 @@ export default function Receive() {
           {status === 'receiving' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-                RECEIVING {webrtc.isPaused && '(PAUSED)'}
+                {webrtc.isPaused ? 'PAUSED' : 'RECEIVING'}
               </div>
-              <div className="minimal-border p-4">
-                <div className="text-xs truncate mb-3" style={{ color: 'hsl(var(--accent))' }}>
+              <div className="minimal-border p-6 flex flex-col items-center justify-center">
+                <div className="digital-percent" data-testid="text-progress">
+                  {progress}<span className="digital-percent-symbol">%</span>
+                </div>
+                <div className="text-[10px] mt-3 truncate max-w-full" style={{ color: 'hsl(var(--text-dim))' }}>
                   {fileInfo?.name}
                 </div>
-                <div className="progress-track mb-2">
-                  <div 
-                    className="progress-fill"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
-                  <span>{progress}%</span>
-                  {currentSpeed > 0 && !webrtc.isPaused && (
-                    <span style={{ color: 'hsl(var(--accent))' }}>
-                      {currentSpeed.toFixed(1)} MB/s
-                    </span>
-                  )}
-                </div>
-                {currentSpeed > 0 && bytesRemaining > 0 && !webrtc.isPaused && (
-                  <div className="flex items-center gap-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                    <Clock size={10} />
-                    <span>{formatTimeRemaining(bytesRemaining, currentSpeed)}</span>
-                  </div>
-                )}
               </div>
               <div className="flex gap-2 mt-2">
                 <button
