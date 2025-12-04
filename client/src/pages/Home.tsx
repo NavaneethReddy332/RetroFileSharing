@@ -30,6 +30,7 @@ export default function Home() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [receiveCode, setReceiveCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [transferStartTime, setTransferStartTime] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -370,6 +371,18 @@ export default function Home() {
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       addLog('failed to copy code', 'error');
+    }
+  };
+
+  const copyLink = async () => {
+    try {
+      const link = `${window.location.origin}/receive?code=${code}`;
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      addLog('link copied to clipboard', 'success');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (error) {
+      addLog('failed to copy link', 'error');
     }
   };
 
@@ -899,6 +912,23 @@ export default function Home() {
               <div className="text-[9px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
                 scan to receive
               </div>
+              <button
+                onClick={copyLink}
+                className="mt-3 w-full minimal-btn flex items-center justify-center gap-2 text-[10px]"
+                data-testid="button-copy-link"
+              >
+                {linkCopied ? (
+                  <>
+                    <Check size={12} style={{ color: 'hsl(var(--accent))' }} />
+                    <span style={{ color: 'hsl(var(--accent))' }}>copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} />
+                    <span>copy link</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}
