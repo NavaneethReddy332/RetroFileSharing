@@ -8,11 +8,29 @@ interface WebRTCConfig {
   onPauseStateChange?: (isPaused: boolean) => void;
 }
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-];
+function getIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+  ];
+
+  const turnUrl = import.meta.env.VITE_TURN_URL;
+  const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+
+  if (turnUrl && turnUsername && turnCredential) {
+    servers.push({
+      urls: turnUrl,
+      username: turnUsername,
+      credential: turnCredential,
+    });
+  }
+
+  return servers;
+}
 
 const CHUNK_SIZE = 32 * 1024;
 const FAST_CHUNK_SIZE = 64 * 1024;
@@ -21,6 +39,7 @@ const LOW_BUFFER_THRESHOLD = MAX_BUFFER_SIZE / 2;
 const HEADER_SIZE = 12;
 const MAX_RETRANSMIT_ROUNDS = 5;
 const RETRANSMIT_TIMEOUT = 10000;
+const MAX_CACHE_CHUNKS = 500;
 
 export function useWebRTC(config: WebRTCConfig) {
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -101,7 +120,7 @@ export function useWebRTC(config: WebRTCConfig) {
 
   const createPeerConnection = useCallback((isSender: boolean) => {
     const pc = new RTCPeerConnection({ 
-      iceServers: ICE_SERVERS,
+      iceServers: getIceServers(),
       iceCandidatePoolSize: 10,
     });
     

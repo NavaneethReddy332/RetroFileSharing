@@ -145,6 +145,36 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 4, 2025 - Security Hardening & Code Consolidation
+
+**Security Improvements**
+- HMAC token authentication for WebSocket connections (both sender and receiver)
+- Token is generated on session creation and verified on WebSocket join
+- Rate limiting on API endpoints (20 requests/min for session creation, 30 for lookup)
+- Rate limiting on WebSocket connections (50/min per IP)
+- Zod validation on all API request bodies with proper error messages
+- File size validation (4GB limit) enforced on client-side and server-side
+
+**Code Consolidation**
+- Extracted shared utility functions to `client/src/lib/utils.ts`:
+  - formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate
+  - getLogColor, getStatusColor for consistent log styling
+  - validateFiles with size limit enforcement
+- Removed duplicate code from Home.tsx and Receive.tsx
+
+**Authentication Flow**
+1. POST /api/session returns code + token for sender
+2. GET /api/session/:code returns session info + token for receiver
+3. WebSocket join-sender/join-receiver verify HMAC token before pairing
+4. Both peers must be authenticated before P2P signaling begins
+
+**Files Modified**
+- `server/lib/security.ts` - HMAC token generation and verification
+- `server/routes.ts` - Token in responses, WebSocket verification
+- `client/src/lib/utils.ts` - Shared utility functions
+- `client/src/pages/Home.tsx` - Uses shared utils, sends token on WS join
+- `client/src/pages/Receive.tsx` - Uses shared utils, sends token on WS join
+
 ### December 3, 2025 - Fast Mode with Data Integrity
 
 **Feature Added**

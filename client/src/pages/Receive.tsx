@@ -5,6 +5,7 @@ import { useSearch } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
+import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor } from "../lib/utils";
 
 interface LogEntry {
   id: number;
@@ -83,38 +84,6 @@ export default function Receive() {
     }
   }, []);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes >= 1024 * 1024 * 1024) {
-      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    }
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${(bytes / 1024).toFixed(2)} KB`;
-  };
-
-  const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
-
-  const formatTimeRemaining = (bytesRemaining: number, speedMBps: number): string => {
-    if (speedMBps <= 0) return 'calculating...';
-    const bytesPerSecond = speedMBps * 1024 * 1024;
-    const seconds = bytesRemaining / bytesPerSecond;
-    
-    if (seconds < 60) {
-      return `~${Math.ceil(seconds)}s left`;
-    } else if (seconds < 3600) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.ceil(seconds % 60);
-      return `~${mins}m ${secs}s left`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.ceil((seconds % 3600) / 60);
-      return `~${hours}h ${mins}m left`;
-    }
-  };
-
   const formatCompletedDate = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -128,29 +97,6 @@ export default function Receive() {
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
     if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
     return date.toLocaleDateString();
-  };
-
-  const formatHistoryDate = (date: Date): string => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  const getStatusColor = (recordStatus: string) => {
-    switch (recordStatus) {
-      case 'completed': return 'hsl(var(--accent))';
-      case 'cancelled': return 'hsl(45 80% 55%)';
-      case 'failed': return 'hsl(0 65% 55%)';
-      default: return 'hsl(var(--text-dim))';
-    }
   };
 
   const startReceiving = async (codeToUse?: string) => {
@@ -197,6 +143,7 @@ export default function Receive() {
       }
 
       const session = await response.json();
+      const sessionToken = session.token;
       setFileInfo({ name: session.fileName, size: session.fileSize });
       setTotalBytes(session.fileSize);
       addLog(`file: ${session.fileName}`, 'success');
@@ -207,7 +154,7 @@ export default function Receive() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode }));
+        ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode, token: sessionToken }));
         addLog('connected to server', 'info');
       };
 
@@ -369,17 +316,6 @@ export default function Receive() {
       webrtc.cleanup();
     };
   }, []);
-
-  const getLogColor = (type: LogEntry['type']) => {
-    switch (type) {
-      case 'error': return 'hsl(0 65% 55%)';
-      case 'success': return 'hsl(var(--accent))';
-      case 'warn': return 'hsl(45 80% 55%)';
-      case 'system': return 'hsl(270 50% 60%)';
-      case 'data': return 'hsl(200 60% 55%)';
-      default: return 'hsl(var(--text-secondary))';
-    }
-  };
 
   const bytesRemaining = totalBytes - bytesTransferred;
 

@@ -3,8 +3,9 @@ import { RetroLayout } from "../components/RetroLayout";
 import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
-import { useTransferHistory, TransferRecord } from "../hooks/useTransferHistory";
+import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
+import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
 import ZipWorker from "../workers/zipWorker?worker";
 
 interface LogEntry {
@@ -77,55 +78,16 @@ export default function Home() {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes >= 1024 * 1024 * 1024) {
-      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    }
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    return `${(bytes / 1024).toFixed(2)} KB`;
-  };
-
-  const formatTime = (date: Date): string => {
-    return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
-
-  const formatTimeRemaining = (bytesRemaining: number, speedMBps: number): string => {
-    if (speedMBps <= 0) return 'calculating...';
-    const bytesPerSecond = speedMBps * 1024 * 1024;
-    const seconds = bytesRemaining / bytesPerSecond;
-    
-    if (seconds < 60) {
-      return `~${Math.ceil(seconds)}s left`;
-    } else if (seconds < 3600) {
-      const mins = Math.floor(seconds / 60);
-      const secs = Math.ceil(seconds % 60);
-      return `~${mins}m ${secs}s left`;
-    } else {
-      const hours = Math.floor(seconds / 3600);
-      const mins = Math.ceil((seconds % 3600) / 60);
-      return `~${hours}h ${mins}m left`;
-    }
-  };
-
-  const formatHistoryDate = (date: Date): string => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const selectedFiles = Array.from(e.target.files);
+      
+      const validation = validateFiles(selectedFiles);
+      if (!validation.valid) {
+        addLog(validation.message || 'File validation failed', 'error');
+        return;
+      }
+      
       setFiles(selectedFiles);
       setZipFile(null);
       if (selectedFiles.length === 1) {
@@ -154,6 +116,13 @@ export default function Home() {
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFiles = Array.from(e.dataTransfer.files);
+      
+      const validation = validateFiles(droppedFiles);
+      if (!validation.valid) {
+        addLog(validation.message || 'File validation failed', 'error');
+        return;
+      }
+      
       setFiles(droppedFiles);
       setZipFile(null);
       if (droppedFiles.length === 1) {
@@ -284,6 +253,7 @@ export default function Home() {
       }
 
       const data = await response.json();
+      const sessionToken = data.token;
       setCode(data.code);
       setStatus('waiting');
       addLog(`code: ${data.code}`, 'success');
@@ -294,7 +264,7 @@ export default function Home() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-sender', code: data.code }));
+        ws.send(JSON.stringify({ type: 'join-sender', code: data.code, token: sessionToken }));
         addLog('connected to server', 'info');
       };
 
@@ -477,25 +447,6 @@ export default function Home() {
     };
   }, []);
 
-  const getLogColor = (type: LogEntry['type']) => {
-    switch (type) {
-      case 'error': return 'hsl(0 65% 55%)';
-      case 'success': return 'hsl(var(--accent))';
-      case 'warn': return 'hsl(45 80% 55%)';
-      case 'system': return 'hsl(270 50% 60%)';
-      case 'data': return 'hsl(200 60% 55%)';
-      default: return 'hsl(var(--text-secondary))';
-    }
-  };
-
-  const getStatusColor = (recordStatus: string) => {
-    switch (recordStatus) {
-      case 'completed': return 'hsl(var(--accent))';
-      case 'cancelled': return 'hsl(45 80% 55%)';
-      case 'failed': return 'hsl(0 65% 55%)';
-      default: return 'hsl(var(--text-dim))';
-    }
-  };
 
   const activeFile = zipFile || (files.length === 1 ? files[0] : null);
   const bytesRemaining = totalBytes - bytesTransferred;
