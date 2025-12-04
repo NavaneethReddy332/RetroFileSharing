@@ -65,7 +65,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
         <header className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
           <Link href="/" className="no-underline">
             <span 
-              className="text-sm tracking-[0.3em] font-medium glow-text font-brand"
+              className="text-sm tracking-[0.3em] font-medium glow-text"
               style={{ color: 'hsl(var(--accent))' }}
             >
               RETRO SEND
@@ -107,7 +107,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
 
         {/* Powered by Replit section */}
         <div 
-          className="px-5 py-3 flex items-center justify-center gap-2 font-brand"
+          className="px-5 py-3 flex items-center justify-center gap-2"
           style={{ color: 'hsl(var(--text-dim))' }}
         >
           <span className="text-[10px] tracking-wider">POWERED BY</span>

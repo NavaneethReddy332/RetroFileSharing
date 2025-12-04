@@ -2,7 +2,6 @@
 
 @theme inline {
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-zeyada: 'Zeyada', cursive;
 }
 
 @layer base {
@@ -48,16 +47,9 @@
 
   body {
     background-color: hsl(var(--surface));
-    font-family: var(--font-zeyada), cursive;
+    font-family: var(--font-mono), monospace;
     color: hsl(var(--text-primary));
     overflow: hidden;
-    font-size: 18px;
-  }
-
-  /* Brand font - keep monospace for logo and powered by */
-  .font-brand {
-    font-family: var(--font-mono), monospace !important;
-    font-size: inherit;
   }
   
   ::selection {
