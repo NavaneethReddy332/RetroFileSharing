@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
@@ -32,6 +33,7 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [transferStartTime, setTransferStartTime] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -509,7 +511,7 @@ export default function Home() {
                       </div>
                     ) : (
                       <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                        drop or click (multi-select)
+                        drop or click (files/folders)
                       </div>
                     )}
                   </div>
@@ -521,6 +523,15 @@ export default function Home() {
                   onChange={handleFileChange}
                   className="hidden"
                   data-testid="input-file"
+                />
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                  {...{ webkitdirectory: "", directory: "" } as any}
+                  data-testid="input-folder"
                 />
 
                 {files.length > 1 && (
@@ -576,15 +587,25 @@ export default function Home() {
                   </div>
                 )}
 
-                <button
-                  onClick={startSending}
-                  disabled={files.length === 0}
-                  className={`minimal-btn w-full mt-2 flex items-center justify-center gap-2 ${files.length > 0 ? 'minimal-btn-accent' : ''}`}
-                  data-testid="button-send"
-                >
-                  {files.length > 1 ? 'zip & generate code' : files.length === 1 ? 'generate code' : 'select file(s)'}
-                  {files.length > 0 && <ArrowRight size={12} />}
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => folderInputRef.current?.click()}
+                    className="minimal-btn flex items-center justify-center gap-1 px-3"
+                    title="Select folder"
+                    data-testid="button-select-folder"
+                  >
+                    <FolderOpen size={12} />
+                  </button>
+                  <button
+                    onClick={startSending}
+                    disabled={files.length === 0}
+                    className={`minimal-btn flex-1 flex items-center justify-center gap-2 ${files.length > 0 ? 'minimal-btn-accent' : ''}`}
+                    data-testid="button-send"
+                  >
+                    {files.length > 1 ? 'zip & generate code' : files.length === 1 ? 'generate code' : 'select file(s)'}
+                    {files.length > 0 && <ArrowRight size={12} />}
+                  </button>
+                </div>
               </div>
 
               {showHistory && (
@@ -849,6 +870,35 @@ export default function Home() {
                 </div>
               ))}
               <div ref={logsEndRef} />
+            </div>
+          </div>
+        )}
+
+        {code && (status === 'waiting' || status === 'transferring' || status === 'connected' || status === 'complete') && (
+          <div className="w-40">
+            <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+              QR CODE
+            </div>
+            <div 
+              className="minimal-border p-3 flex flex-col items-center"
+              style={{ background: 'hsl(var(--bg))' }}
+            >
+              <div 
+                className="p-2 rounded"
+                style={{ background: '#ffffff' }}
+              >
+                <QRCodeSVG 
+                  value={typeof window !== 'undefined' ? `${window.location.origin}/receive?code=${code}` : `/receive?code=${code}`}
+                  size={120}
+                  level="M"
+                  fgColor="#000000"
+                  bgColor="#ffffff"
+                  data-testid="qr-code"
+                />
+              </div>
+              <div className="text-[9px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
+                scan to receive
+              </div>
             </div>
           </div>
         )}
