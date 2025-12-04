@@ -597,11 +597,8 @@ export default function Receive() {
                 CANCELLED
               </div>
               <div className="minimal-border p-4 text-center">
-                <div className="text-xs mb-1" style={{ color: 'hsl(45 80% 55%)' }}>
+                <div className="text-xs" style={{ color: 'hsl(0 65% 55%)' }}>
                   transfer cancelled
-                </div>
-                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                  {fileInfo?.name}
                 </div>
               </div>
               <button
@@ -609,7 +606,7 @@ export default function Receive() {
                 className="minimal-btn minimal-btn-accent w-full mt-2"
                 data-testid="button-try-again"
               >
-                try again
+                try another code
               </button>
             </div>
           )}

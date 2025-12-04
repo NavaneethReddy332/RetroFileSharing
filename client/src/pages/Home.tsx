@@ -816,11 +816,8 @@ export default function Home() {
                 CANCELLED
               </div>
               <div className="minimal-border p-4 text-center">
-                <div className="text-xs mb-1" style={{ color: 'hsl(45 80% 55%)' }}>
+                <div className="text-xs" style={{ color: 'hsl(0 65% 55%)' }}>
                   transfer cancelled
-                </div>
-                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                  {activeFile?.name || `${files.length} files`}
                 </div>
               </div>
               <button
@@ -828,7 +825,7 @@ export default function Home() {
                 className="minimal-btn minimal-btn-accent w-full mt-2"
                 data-testid="button-try-again"
               >
-                try again
+                try another code
               </button>
             </div>
           )}
@@ -864,58 +861,38 @@ export default function Home() {
           style={{ background: 'rgba(0, 0, 0, 0.8)' }}
         >
           <div 
-            className="w-80 p-6 minimal-border"
+            className="p-4 minimal-border"
             style={{ 
               background: 'hsl(var(--bg))',
-              boxShadow: '0 0 30px hsl(45 100% 50% / 0.2)'
+              borderColor: 'hsl(0 65% 55% / 0.5)'
             }}
           >
-            <div className="flex items-center gap-3 mb-4">
-              <AlertTriangle size={24} style={{ color: 'hsl(45 100% 50%)' }} />
-              <div className="text-sm font-medium" style={{ color: 'hsl(45 100% 50%)' }}>
-                FAST MODE WARNING
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={16} style={{ color: 'hsl(0 65% 55%)' }} />
+              <span className="text-xs" style={{ color: 'hsl(0 65% 55%)' }}>
+                Fast mode may cause data loss on unstable networks
+              </span>
+              <div className="flex gap-2 ml-2">
+                <button
+                  onClick={() => setShowFastModeWarning(false)}
+                  className="minimal-btn text-[10px] px-3 py-1"
+                  data-testid="button-cancel-fast-mode"
+                >
+                  cancel
+                </button>
+                <button
+                  onClick={confirmFastMode}
+                  className="minimal-btn text-[10px] px-3 py-1 flex items-center gap-1"
+                  style={{ 
+                    borderColor: 'hsl(0 65% 55%)',
+                    color: 'hsl(0 65% 55%)'
+                  }}
+                  data-testid="button-confirm-fast-mode"
+                >
+                  <Zap size={10} />
+                  enable
+                </button>
               </div>
-            </div>
-            
-            <div className="text-xs mb-4 space-y-3" style={{ color: 'hsl(var(--text-secondary))' }}>
-              <p>
-                Fast Mode uses unreliable UDP-like transfer for <span style={{ color: 'hsl(var(--accent))' }}>maximum speed</span>.
-              </p>
-              <p>
-                <span style={{ color: 'hsl(45 100% 50%)' }}>Safety measures included:</span>
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                <li>Chunk sequence tracking</li>
-                <li>Missing chunk detection</li>
-                <li>Automatic retransmission</li>
-                <li>Integrity verification</li>
-              </ul>
-              <p className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                File delivery is guaranteed, but transfer may fall back to requesting missing chunks if network is unstable.
-              </p>
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowFastModeWarning(false)}
-                className="minimal-btn flex-1"
-                data-testid="button-cancel-fast-mode"
-              >
-                cancel
-              </button>
-              <button
-                onClick={confirmFastMode}
-                className="minimal-btn flex-1 flex items-center justify-center gap-2"
-                style={{ 
-                  borderColor: 'hsl(45 100% 50%)',
-                  color: 'hsl(45 100% 50%)',
-                  boxShadow: '0 0 10px hsl(45 100% 50% / 0.3)'
-                }}
-                data-testid="button-confirm-fast-mode"
-              >
-                <Zap size={12} />
-                enable
-              </button>
             </div>
           </div>
         </div>
