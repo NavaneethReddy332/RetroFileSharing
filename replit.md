@@ -145,6 +145,27 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 4, 2025 - QR Code and Folder Transfer Features
+
+**New Features**
+- QR Code display for easy mobile scanning of 6-digit transfer code
+- Folder selection button for transferring entire directories (auto-zipped)
+
+**QR Code Implementation**
+- Uses qrcode.react library (QRCodeSVG component)
+- Displays after LOG section when transfer code is generated
+- Links to receive page with pre-filled code parameter
+- SSR-safe implementation with typeof window guard
+
+**Folder Transfer Implementation**
+- Added folder button with FolderOpen icon next to send button
+- Uses webkitdirectory attribute for folder selection
+- Multiple files and folders are automatically compressed to ZIP
+- Drop zone text updated to indicate files/folders support
+
+**Files Modified**
+- `client/src/pages/Home.tsx` - QR code display and folder selection UI
+
 ### December 4, 2025 - P2P Transfer Speed Optimization
 
 **Problem Addressed**
