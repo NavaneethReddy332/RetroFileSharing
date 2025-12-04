@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X, ChevronLeft } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft, User, Users, Zap, Code } from 'lucide-react';
 
 interface RetroLayoutProps {
   children: React.ReactNode;
@@ -220,7 +220,90 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </div>
         </Link>
 
-        <div className="mt-auto pt-4 border-t" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+        {/* About Section */}
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+          <div className="text-[10px] tracking-[0.2em] mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
+            ABOUT
+          </div>
+          
+          {/* Developer */}
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-1">
+              <User size={10} style={{ color: 'hsl(var(--accent))' }} />
+              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>DEVELOPER</span>
+            </div>
+            <div className="text-xs font-medium pl-4" style={{ color: 'hsl(var(--accent))' }}>
+              RONINN
+            </div>
+          </div>
+
+          {/* Team */}
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Users size={10} style={{ color: 'hsl(var(--accent))' }} />
+              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>TEAM</span>
+            </div>
+            <div className="text-[10px] pl-4 space-y-0.5" style={{ color: 'hsl(var(--text-secondary))' }}>
+              <div>RONINN</div>
+              <div style={{ color: 'hsl(var(--accent))' }}>REPLIT</div>
+            </div>
+          </div>
+
+          {/* App Info */}
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Code size={10} style={{ color: 'hsl(var(--accent))' }} />
+              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>APP INFO</span>
+            </div>
+            <div className="text-[9px] pl-4 leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
+              RETRO SEND is a peer-to-peer file transfer application with a retro terminal aesthetic. Transfer files directly between devices without storing data on servers.
+            </div>
+          </div>
+
+          {/* Powered By */}
+          <div className="mb-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap size={10} style={{ color: 'hsl(var(--accent))' }} />
+              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>POWERED BY</span>
+            </div>
+            <a 
+              href="https://replit.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 pl-4 transition-opacity hover:opacity-80 no-underline"
+              data-testid="sidebar-link-replit"
+            >
+              <svg 
+                width="14" 
+                height="14" 
+                viewBox="0 0 32 32" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path 
+                  d="M7 5.5C7 4.67157 7.67157 4 8.5 4H15.5C16.3284 4 17 4.67157 17 5.5V12H8.5C7.67157 12 7 11.3284 7 10.5V5.5Z" 
+                  fill="hsl(var(--accent))"
+                />
+                <path 
+                  d="M17 12H25.5C26.3284 12 27 12.6716 27 13.5V18.5C27 19.3284 26.3284 20 25.5 20H17V12Z" 
+                  fill="hsl(var(--accent))"
+                />
+                <path 
+                  d="M7 21.5C7 20.6716 7.67157 20 8.5 20H17V28H8.5C7.67157 28 7 27.3284 7 26.5V21.5Z" 
+                  fill="hsl(var(--accent))"
+                />
+              </svg>
+              <span className="text-[10px] font-medium" style={{ color: 'hsl(var(--accent))' }}>
+                REPLIT
+              </span>
+            </a>
+            <div className="text-[8px] pl-4 mt-1 leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
+              Built and deployed with Replit - the collaborative browser-based IDE for building software.
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-auto pt-3 border-t" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
           <div className="flex items-start gap-2 p-2" style={{ backgroundColor: 'hsl(var(--surface))' }}>
             <Info size={12} className="mt-0.5 flex-shrink-0" style={{ color: 'hsl(var(--text-dim))' }} />
             <p className="text-[9px] leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
