@@ -105,7 +105,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           {children}
         </main>
 
-        {/* Powered by Replit section */}
+        {/* Powered by section */}
         <div 
           className="px-5 py-3 flex items-center justify-center gap-2"
           style={{ color: 'hsl(var(--text-dim))' }}
@@ -143,6 +143,36 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               style={{ color: 'hsl(var(--accent))' }}
             >
               REPLIT
+            </span>
+          </a>
+          <span className="text-[10px] tracking-wider">&</span>
+          <a 
+            href="https://render.com" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 transition-opacity hover:opacity-80"
+            data-testid="link-render"
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path 
+                d="M12.568 3h-1.136C6.199 3 2 7.199 2 12.432v1.136c0 1.49 1.01 2.432 2.5 2.432h1.932c1.49 0 2.5-.942 2.5-2.432v-.204c0-1.49 1.01-2.432 2.5-2.432h1.136c1.49 0 2.5.942 2.5 2.432v.204c0 1.49 1.01 2.432 2.5 2.432H19.5c1.49 0 2.5-.942 2.5-2.432v-1.136C22 7.199 17.801 3 12.568 3z" 
+                fill="hsl(var(--accent))"
+              />
+              <rect x="2" y="18" width="4.5" height="4" rx="1.5" fill="hsl(var(--accent))" />
+              <rect x="9.75" y="18" width="4.5" height="4" rx="1.5" fill="hsl(var(--accent))" />
+              <rect x="17.5" y="18" width="4.5" height="4" rx="1.5" fill="hsl(var(--accent))" />
+            </svg>
+            <span 
+              className="text-[11px] font-medium tracking-wider"
+              style={{ color: 'hsl(var(--accent))' }}
+            >
+              RENDER
             </span>
           </a>
         </div>
