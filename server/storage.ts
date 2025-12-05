@@ -8,6 +8,7 @@ export interface IStorage {
   getSessionByCode(code: string): Promise<TransferSession | undefined>;
   getSessionByCodeIncludeCompleted(code: string): Promise<TransferSession | undefined>;
   updateSessionStatus(id: number, status: string): Promise<void>;
+  updateSession(code: string, data: Partial<Pick<TransferSession, 'status'>>): Promise<void>;
   markSessionCompleted(id: number): Promise<void>;
   cleanupExpiredSessions(): Promise<void>;
   deleteOldSessions(): Promise<void>;
@@ -84,6 +85,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateSessionStatus(id: number, status: string): Promise<void> {
     await db.update(transferSessions).set({ status }).where(eq(transferSessions.id, id));
+  }
+
+  async updateSession(code: string, data: Partial<Pick<TransferSession, 'status'>>): Promise<void> {
+    await db.update(transferSessions).set(data).where(eq(transferSessions.code, code));
   }
 
   async markSessionCompleted(id: number): Promise<void> {

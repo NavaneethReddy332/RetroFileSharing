@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertTransferSessionSchema } from "@shared/schema";
 import { generateSecureCode, generateSessionToken, verifySessionToken, checkRateLimit } from "./lib/security";
+import { b2Service } from "./lib/b2";
 import { z } from "zod";
 
 interface ReceiverInfo {
@@ -175,6 +176,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Session lookup error:", error);
       res.status(500).json({ error: "Failed to retrieve session" });
+    }
+  });
+
+  app.get("/api/cloud/status", async (_req, res) => {
+    res.json({ 
+      enabled: b2Service.isEnabled(),
+      provider: 'backblaze-b2'
+    });
+  });
+
+  app.post("/api/cloud/upload-url", async (req, res) => {
+    try {
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`cloud:${clientIP}`, 30, 60000);
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      if (!b2Service.isEnabled()) {
+        return res.status(503).json({ error: "Cloud storage is not configured" });
+      }
+
+      const { fileName, contentType, fileSize } = req.body;
+
+      if (!fileName || typeof fileName !== 'string') {
+        return res.status(400).json({ error: "fileName is required" });
+      }
+
+      if (!contentType || typeof contentType !== 'string') {
+        return res.status(400).json({ error: "contentType is required" });
+      }
+
+      if (typeof fileSize !== 'number' || fileSize <= 0) {
+        return res.status(400).json({ error: "fileSize must be a positive number" });
+      }
+
+      if (fileSize > MAX_FILE_SIZE) {
+        return res.status(400).json({ error: "File size exceeds maximum allowed (4GB)" });
+      }
+
+      const uploadData = await b2Service.getUploadUrl(fileName);
+      
+      if (!uploadData) {
+        return res.status(500).json({ error: "Failed to get upload URL" });
+      }
+
+      res.json({
+        uploadUrl: uploadData.uploadUrl,
+        authorizationToken: uploadData.authorizationToken,
+        fileName: uploadData.fileName,
+        bucketId: uploadData.bucketId,
+      });
+    } catch (error) {
+      console.error("Cloud upload URL error:", error);
+      res.status(500).json({ error: "Failed to generate upload URL" });
     }
   });
 
@@ -472,7 +532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             rooms.delete(currentCode);
             
             storage.updateSession(currentCode, { status: "cancelled" })
-              .catch(err => console.error("Failed to update session status:", err));
+              .catch((err: Error) => console.error("Failed to update session status:", err));
             break;
           }
         }

@@ -1,0 +1,170 @@
+import B2 from 'backblaze-b2';
+
+interface UploadUrlResponse {
+  uploadUrl: string;
+  authorizationToken: string;
+  bucketId: string;
+  fileName: string;
+}
+
+interface DownloadAuthResponse {
+  downloadUrl: string;
+  fileId: string;
+  fileName: string;
+}
+
+class B2Service {
+  private b2: B2 | null = null;
+  private authorized: boolean = false;
+  private authorizationData: any = null;
+  private uploadUrlCache: { url: string; token: string; expiry: number } | null = null;
+
+  constructor() {
+    this.initializeB2();
+  }
+
+  private initializeB2() {
+    const keyId = process.env.B2_APPLICATION_KEY_ID;
+    const key = process.env.B2_APPLICATION_KEY;
+    
+    if (!keyId || !key) {
+      console.log('B2 credentials not configured - cloud storage disabled');
+      return;
+    }
+
+    this.b2 = new B2({
+      applicationKeyId: keyId,
+      applicationKey: key,
+    });
+  }
+
+  async authorize(): Promise<boolean> {
+    if (!this.b2) {
+      return false;
+    }
+
+    try {
+      const response = await this.b2.authorize();
+      this.authorizationData = response.data;
+      this.authorized = true;
+      return true;
+    } catch (error) {
+      console.error('B2 authorization failed:', error);
+      this.authorized = false;
+      return false;
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.b2 !== null && 
+           !!process.env.B2_APPLICATION_KEY_ID && 
+           !!process.env.B2_APPLICATION_KEY &&
+           !!process.env.B2_BUCKET_ID &&
+           !!process.env.B2_BUCKET_NAME;
+  }
+
+  async getUploadUrl(fileName: string): Promise<UploadUrlResponse | null> {
+    if (!this.isEnabled()) {
+      return null;
+    }
+
+    try {
+      if (!this.authorized) {
+        const success = await this.authorize();
+        if (!success) {
+          throw new Error('Failed to authorize with B2');
+        }
+      }
+
+      const bucketId = process.env.B2_BUCKET_ID!;
+      
+      const response = await this.b2!.getUploadUrl({ bucketId });
+      
+      const timestamp = Date.now();
+      const safeFileName = `${timestamp}-${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      return {
+        uploadUrl: response.data.uploadUrl,
+        authorizationToken: response.data.authorizationToken,
+        bucketId: bucketId,
+        fileName: safeFileName,
+      };
+    } catch (error: any) {
+      console.error('Failed to get upload URL:', error);
+      
+      if (error.response?.status === 401) {
+        this.authorized = false;
+        return this.getUploadUrl(fileName);
+      }
+      
+      return null;
+    }
+  }
+
+  async getDownloadAuthorization(fileId: string, fileName: string, validDurationInSeconds: number = 86400): Promise<DownloadAuthResponse | null> {
+    if (!this.isEnabled()) {
+      return null;
+    }
+
+    try {
+      if (!this.authorized) {
+        const success = await this.authorize();
+        if (!success) {
+          throw new Error('Failed to authorize with B2');
+        }
+      }
+
+      const bucketName = process.env.B2_BUCKET_NAME!;
+      
+      const response = await this.b2!.getDownloadAuthorization({
+        bucketId: process.env.B2_BUCKET_ID!,
+        fileNamePrefix: fileName,
+        validDurationInSeconds,
+      });
+
+      const downloadUrl = `${this.authorizationData.downloadUrl}/file/${bucketName}/${fileName}?Authorization=${response.data.authorizationToken}`;
+
+      return {
+        downloadUrl,
+        fileId,
+        fileName,
+      };
+    } catch (error: any) {
+      console.error('Failed to get download authorization:', error);
+      
+      if (error.response?.status === 401) {
+        this.authorized = false;
+        return this.getDownloadAuthorization(fileId, fileName, validDurationInSeconds);
+      }
+      
+      return null;
+    }
+  }
+
+  async deleteFile(fileId: string, fileName: string): Promise<boolean> {
+    if (!this.isEnabled()) {
+      return false;
+    }
+
+    try {
+      if (!this.authorized) {
+        const success = await this.authorize();
+        if (!success) {
+          throw new Error('Failed to authorize with B2');
+        }
+      }
+
+      await this.b2!.deleteFileVersion({
+        fileId,
+        fileName,
+      });
+
+      return true;
+    } catch (error: any) {
+      console.error('Failed to delete file:', error);
+      return false;
+    }
+  }
+}
+
+export const b2Service = new B2Service();
