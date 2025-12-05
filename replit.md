@@ -43,6 +43,8 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
     - `@libsql/client`
     - Environment variables: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - **Cloud Storage (Optional)**: Backblaze B2 - For optional "Save to Cloud" feature.
+    - **Upload Method**: Server-proxied uploads (files sent to server which uploads to B2). This approach was chosen because B2's upload endpoints do not support CORS for direct browser uploads.
+    - **Size Limit**: 500MB max for cloud uploads (larger files should use P2P transfer).
     - Environment variables: `B2_APPLICATION_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_ID`, `B2_BUCKET_NAME`
 - **Replit Platform Integration**:
     - `@replit/vite-plugin-runtime-error-modal`
