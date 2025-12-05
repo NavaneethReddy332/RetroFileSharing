@@ -209,7 +209,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Ensure CORS is configured for direct browser uploads
-      await b2Service.ensureCorsConfigured();
+      const corsConfigured = await b2Service.ensureCorsConfigured();
+      if (!corsConfigured) {
+        return res.status(503).json({ 
+          error: "Cloud storage CORS is not configured. Please configure CORS rules on your B2 bucket to allow browser uploads.",
+          corsRequired: true
+        });
+      }
 
       const { fileName, contentType, fileSize } = req.body;
 

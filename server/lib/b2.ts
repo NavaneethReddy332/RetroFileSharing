@@ -76,8 +76,38 @@ class B2Service {
         return;
       }
 
+      // First, get the current bucket configuration to preserve the bucket type
+      // accountId is required for listBuckets API
+      const accountId = this.authorizationData?.accountId;
+      if (!accountId) {
+        console.error('B2 accountId not available - skipping CORS setup');
+        return;
+      }
+
+      const listBucketsResponse = await (this.b2 as any).listBuckets({
+        accountId: accountId,
+        bucketId: bucketId
+      });
+
+      const bucket = listBucketsResponse.data.buckets.find((b: any) => b.bucketId === bucketId);
+      if (!bucket) {
+        console.error('B2 bucket not found - skipping CORS setup');
+        return;
+      }
+
+      // Check if CORS is already configured with our rules
+      const existingCorsRules = bucket.corsRules || [];
+      const hasOurRule = existingCorsRules.some((rule: any) => rule.corsRuleName === 'allowBrowserUploads');
+      
+      if (hasOurRule) {
+        this.corsConfigured = true;
+        console.log('B2 CORS rules already configured');
+        return;
+      }
+
       // Configure CORS rules to allow browser uploads from any origin
       const corsRules = [
+        ...existingCorsRules,
         {
           corsRuleName: 'allowBrowserUploads',
           allowedOrigins: ['*'],
@@ -104,9 +134,10 @@ class B2Service {
       ];
 
       // Use type assertion since the B2 types don't include corsRules but the API supports it
+      // Preserve the existing bucket type instead of forcing allPrivate
       await (this.b2 as any).updateBucket({
         bucketId,
-        bucketType: 'allPrivate',
+        bucketType: bucket.bucketType,
         corsRules
       });
 
