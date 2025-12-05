@@ -712,8 +712,16 @@ export function useWebRTC(config: WebRTCConfig) {
         };
 
         channel.onerror = () => {
-          log('channel error', 'error');
-          reject(new Error('Data channel error'));
+          if (!isCancelledRef.current) {
+            log('channel error', 'error');
+            reject(new Error('Data channel error'));
+          }
+        };
+
+        channel.onclose = () => {
+          if (!isCancelledRef.current && !transferComplete) {
+            reject(new Error('Channel closed'));
+          }
         };
       };
 

@@ -42,6 +42,7 @@ export default function Receive() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const statusRef = useRef(status);
   const currentCodeRef = useRef<string>('');
+  const cancelledBySenderRef = useRef(false);
   const { history, addRecord, clearHistory, getRecentReceives } = useTransferHistory();
 
   useEffect(() => {
@@ -63,10 +64,14 @@ export default function Receive() {
       setCurrentSpeed(0);
     },
     onError: (error) => {
-      addLog(error, 'error');
+      if (cancelledBySenderRef.current) {
+        return;
+      }
       if (error.includes('cancelled')) {
         setStatus('cancelled');
-      } else {
+        addLog(error, 'error');
+      } else if (statusRef.current !== 'cancelled' && statusRef.current !== 'complete') {
+        addLog(error, 'error');
         setStatus('idle');
       }
       setCurrentSpeed(0);
@@ -106,6 +111,7 @@ export default function Receive() {
       return;
     }
 
+    cancelledBySenderRef.current = false;
     currentCodeRef.current = activeCode;
     setLogs([]);
     setStatus('connecting');
@@ -282,12 +288,30 @@ export default function Receive() {
             webrtc.cleanup();
             break;
 
+          case 'sender-cancelled':
+            cancelledBySenderRef.current = true;
+            addLog('cancelled by sender', 'warn');
+            setStatus('cancelled');
+            webrtc.cleanup();
+            if (fileInfo) {
+              addRecord({
+                type: 'receive',
+                fileName: fileInfo.name,
+                fileSize: fileInfo.size,
+                code: currentCodeRef.current,
+                status: 'cancelled'
+              });
+            }
+            break;
+
           case 'transfer-complete':
             break;
 
           case 'peer-disconnected':
-            addLog('sender disconnected', 'error');
-            setStatus('idle');
+            if (statusRef.current !== 'cancelled' && statusRef.current !== 'complete') {
+              addLog('sender disconnected', 'warn');
+              setStatus('idle');
+            }
             webrtc.cleanup();
             break;
 
@@ -357,6 +381,7 @@ export default function Receive() {
       wsRef.current = null;
     }
     webrtc.cleanup();
+    cancelledBySenderRef.current = false;
     setCode("");
     setStatus('idle');
     setProgress(0);

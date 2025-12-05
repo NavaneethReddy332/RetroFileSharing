@@ -446,6 +446,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             rooms.delete(currentCode);
             break;
           }
+
+          case "sender-cancelled": {
+            if (!currentCode || role !== "sender") return;
+            const room = rooms.get(currentCode);
+            if (!room) return;
+
+            if (room.isMultiShare) {
+              for (const [id, receiver] of Array.from(room.receivers.entries())) {
+                if (receiver.ws.readyState === WebSocket.OPEN) {
+                  receiver.ws.send(JSON.stringify({ type: "sender-cancelled" }));
+                }
+              }
+              room.receivers.clear();
+            } else {
+              if (room.receiver && room.receiver.readyState === WebSocket.OPEN) {
+                room.receiver.send(JSON.stringify({ type: "sender-cancelled" }));
+              }
+              room.receiver = undefined;
+              room.receiverAuthenticated = false;
+            }
+            
+            room.sender = undefined;
+            room.senderAuthenticated = false;
+            rooms.delete(currentCode);
+            
+            storage.updateSession(currentCode, { status: "cancelled" })
+              .catch(err => console.error("Failed to update session status:", err));
+            break;
+          }
         }
       } catch (error) {
         console.error("WebSocket message error:", error);

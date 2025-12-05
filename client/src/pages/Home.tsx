@@ -48,6 +48,7 @@ export default function Home() {
   const [maxReceivers] = useState(4);
   const [multiShareStatus, setMultiShareStatus] = useState<'idle' | 'waiting' | 'active'>('idle');
   const [receiverProgress, setReceiverProgress] = useState<Map<string, { percent: number; speed: number }>>(new Map());
+  const [completedReceivers, setCompletedReceivers] = useState<Set<string>>(new Set());
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -89,11 +90,13 @@ export default function Home() {
         const newMap = new Map(prev);
         newMap.set(receiverId, { percent, speed });
         
-        // Compute aggregate progress from the new map (not stale state)
-        const allProgress = Array.from(newMap.values());
-        if (allProgress.length > 0) {
-          const avgPercent = allProgress.reduce((sum, p) => sum + p.percent, 0) / allProgress.length;
-          const maxSpeed = Math.max(...allProgress.map(p => p.speed));
+        const activeProgress = Array.from(newMap.entries())
+          .filter(([id]) => !completedReceivers.has(id))
+          .map(([_, progress]) => progress);
+        
+        if (activeProgress.length > 0) {
+          const avgPercent = activeProgress.reduce((sum, p) => sum + p.percent, 0) / activeProgress.length;
+          const maxSpeed = Math.max(...activeProgress.map(p => p.speed));
           setProgress(Math.round(avgPercent));
           setCurrentSpeed(maxSpeed);
         }
@@ -103,6 +106,12 @@ export default function Home() {
     },
     onReceiverComplete: (receiverId) => {
       addLog(`receiver ${receiverId.slice(-4)} complete`, 'success');
+      setCompletedReceivers(prev => new Set(prev).add(receiverId));
+      setReceiverProgress(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(receiverId);
+        return newMap;
+      });
     },
     onError: (error, receiverId) => {
       if (receiverId) {
@@ -130,6 +139,8 @@ export default function Home() {
       
       setFiles(selectedFiles);
       setZipFile(null);
+      setMultiShareMode(false);
+      setFastMode(false);
       if (selectedFiles.length === 1) {
         addLog(`selected: ${selectedFiles[0].name}`, 'system');
         addLog(`${formatFileSize(selectedFiles[0].size)}`, 'data');
@@ -165,6 +176,8 @@ export default function Home() {
       
       setFiles(droppedFiles);
       setZipFile(null);
+      setMultiShareMode(false);
+      setFastMode(false);
       if (droppedFiles.length === 1) {
         addLog(`dropped: ${droppedFiles[0].name}`, 'system');
         addLog(`${formatFileSize(droppedFiles[0].size)}`, 'data');
@@ -486,7 +499,11 @@ export default function Home() {
   };
 
   const handleCancel = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'sender-cancelled' }));
+    }
     webrtc.cancel();
+    setStatus('cancelled');
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -498,6 +515,7 @@ export default function Home() {
     setMultiShareStatus('idle');
     setReceiverCount(0);
     setReceiverProgress(new Map());
+    setCompletedReceivers(new Set());
     setProgress(0);
     setCurrentSpeed(0);
   };
@@ -525,9 +543,12 @@ export default function Home() {
     setTotalBytes(0);
     setLogs([]);
     setCopied(false);
+    setMultiShareMode(false);
+    setFastMode(false);
     setMultiShareStatus('idle');
     setReceiverCount(0);
     setReceiverProgress(new Map());
+    setCompletedReceivers(new Set());
   };
 
   const handleReceiveSubmit = () => {

@@ -145,6 +145,34 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 5, 2025 - Sender Cancellation Handling Improvements
+
+**Bug Fixes**
+- Added "sender-cancelled" WebSocket message type for clean sender cancellation notification
+- Receiver now shows single "cancelled by sender" message instead of multiple error messages
+- Suppressed duplicate error handling when sender cancels (channel error, peer disconnected, etc.)
+- Added `cancelledBySenderRef` in Receive.tsx to prevent cascading error displays
+- Updated useWebRTC channel.onerror handler to not log errors when transfer was cancelled
+- Server performs proper room cleanup when sender cancels (deletes room, clears receivers)
+- Session status updated to "cancelled" in database when sender cancels
+- `cancelledBySenderRef` reset at start of new receive attempt to prevent suppressing future errors
+
+**Technical Details**
+- Server routes.ts sender-cancelled case now performs full cleanup:
+  - Clears receivers map (multishare) or receiver reference (single share)
+  - Removes sender reference and authentication state
+  - Deletes room from rooms map
+  - Updates session status to "cancelled" in database
+- Receive.tsx handles sender-cancelled case with clean status transition to 'cancelled'
+- `cancelledBySenderRef` reset in startReceiving() for clean state on new attempts
+- WebRTC channel.onclose handler checks isCancelledRef before rejecting
+- Error callback checks cancelledBySenderRef to avoid duplicate error logs
+
+**Files Modified**
+- `server/routes.ts` - Added sender-cancelled message dispatch with full room cleanup
+- `client/src/pages/Receive.tsx` - Added sender-cancelled handler, error suppression, ref reset
+- `client/src/hooks/useWebRTC.ts` - Improved channel error/close handling
+
 ### December 4, 2025 - QR Code and Folder Transfer Features
 
 **New Features**
