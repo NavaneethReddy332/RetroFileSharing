@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud, Radio, HardDrive, Link2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
@@ -11,6 +11,8 @@ import { SpeedIndicator } from "../components/SpeedIndicator";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
 import ZipWorker from "../workers/zipWorker?worker";
 
+type TransferMode = 'p2p' | 'cloud';
+
 interface LogEntry {
   id: number;
   message: string;
@@ -19,6 +21,7 @@ interface LogEntry {
 }
 
 export default function Home() {
+  const [transferMode, setTransferMode] = useState<TransferMode>('p2p');
   const [files, setFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [isZipping, setIsZipping] = useState(false);
@@ -37,6 +40,7 @@ export default function Home() {
   const [transferStartTime, setTransferStartTime] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const cloudFileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,8 @@ export default function Home() {
   const [cloudUploadProgress, setCloudUploadProgress] = useState(0);
   const [cloudUploadStatus, setCloudUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'failed'>('idle');
   const [cloudFileName, setCloudFileName] = useState<string>('');
+  const [cloudCode, setCloudCode] = useState<string>('');
+  const [cloudFiles, setCloudFiles] = useState<File[]>([]);
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -73,6 +79,10 @@ export default function Home() {
       if (result.success) {
         addLog(`saved to cloud: ${result.fileName}`, 'success');
         setCloudUploadStatus('success');
+        if (result.code) {
+          setCloudCode(result.code);
+          addLog(`permanent code: ${result.code}`, 'success');
+        }
       } else {
         setCloudUploadStatus('failed');
       }
@@ -605,6 +615,108 @@ export default function Home() {
   const handleReceiveSubmit = () => {
     if (receiveCode.length === 6) {
       navigate(`/receive?code=${receiveCode}`);
+    } else if (receiveCode.length === 8) {
+      navigate(`/receive?code=${receiveCode}&type=cloud`);
+    }
+  };
+
+  const handleCloudFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const selectedFiles = Array.from(e.target.files);
+      
+      const validation = validateFiles(selectedFiles);
+      if (!validation.valid) {
+        addLog(validation.message || 'File validation failed', 'error');
+        return;
+      }
+      
+      cloudUpload.cancelUpload();
+      setCloudUploadStatus('idle');
+      setCloudUploadProgress(0);
+      setCloudCode('');
+      setCloudFileName('');
+      setCloudFiles(selectedFiles);
+      
+      if (selectedFiles.length === 1) {
+        addLog(`selected for cloud: ${selectedFiles[0].name}`, 'system');
+        addLog(`${formatFileSize(selectedFiles[0].size)}`, 'data');
+      } else {
+        addLog(`selected for cloud: ${selectedFiles.length} files`, 'system');
+        const totalSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+        addLog(`${formatFileSize(totalSize)} total`, 'data');
+      }
+    }
+  };
+
+  const startCloudUpload = async () => {
+    if (cloudFiles.length === 0) return;
+    
+    setLogs([]);
+    setCloudUploadStatus('uploading');
+    setCloudCode('');
+    
+    let fileToUpload: File;
+    
+    if (cloudFiles.length > 1) {
+      addLog(`creating zip of ${cloudFiles.length} files...`, 'system');
+      try {
+        fileToUpload = await createZipFile(cloudFiles);
+        addLog(`zip created: ${fileToUpload.name}`, 'success');
+      } catch (error: any) {
+        addLog(`zip failed: ${error.message}`, 'error');
+        setCloudUploadStatus('failed');
+        return;
+      }
+    } else {
+      fileToUpload = cloudFiles[0];
+    }
+    
+    setCloudFileName(fileToUpload.name);
+    addLog(`uploading to cloud...`, 'system');
+    
+    const result = await cloudUpload.uploadToCloud(fileToUpload);
+    
+    if (result.success && result.code) {
+      addRecord({
+        type: 'send',
+        fileName: fileToUpload.name,
+        fileSize: fileToUpload.size,
+        code: result.code,
+        status: 'completed',
+      });
+    }
+  };
+
+  const resetCloudUpload = () => {
+    cloudUpload.cancelUpload();
+    setCloudFiles([]);
+    setCloudCode('');
+    setCloudFileName('');
+    setCloudUploadStatus('idle');
+    setCloudUploadProgress(0);
+    setLogs([]);
+  };
+
+  const copyCloudCode = async () => {
+    try {
+      await navigator.clipboard.writeText(cloudCode);
+      setCopied(true);
+      addLog('code copied to clipboard', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      addLog('failed to copy code', 'error');
+    }
+  };
+
+  const copyCloudLink = async () => {
+    try {
+      const link = `${window.location.origin}/receive?code=${cloudCode}&type=cloud`;
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      addLog('link copied to clipboard', 'success');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (error) {
+      addLog('failed to copy link', 'error');
     }
   };
 
@@ -697,7 +809,39 @@ export default function Home() {
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
         <div className="w-72 flex flex-col gap-4">
-          {status === 'idle' && (
+          {/* Mode Toggle */}
+          <div className="flex gap-1 p-1 rounded" style={{ background: 'hsl(var(--border-subtle))' }}>
+            <button
+              onClick={() => { setTransferMode('p2p'); resetCloudUpload(); }}
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-[10px] font-medium tracking-wider transition-all"
+              style={{ 
+                background: transferMode === 'p2p' ? 'hsl(var(--bg))' : 'transparent',
+                color: transferMode === 'p2p' ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
+                boxShadow: transferMode === 'p2p' ? '0 0 10px hsl(var(--accent) / 0.2)' : 'none'
+              }}
+              data-testid="button-mode-p2p"
+            >
+              <Radio size={12} />
+              P2P
+            </button>
+            <button
+              onClick={() => { setTransferMode('cloud'); resetSender(); }}
+              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-[10px] font-medium tracking-wider transition-all"
+              style={{ 
+                background: transferMode === 'cloud' ? 'hsl(var(--bg))' : 'transparent',
+                color: transferMode === 'cloud' ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
+                boxShadow: transferMode === 'cloud' ? '0 0 10px hsl(200 80% 55% / 0.2)' : 'none'
+              }}
+              disabled={!cloudUpload.cloudEnabled}
+              data-testid="button-mode-cloud"
+            >
+              <HardDrive size={12} />
+              CLOUD
+            </button>
+          </div>
+
+          {/* P2P Mode */}
+          {transferMode === 'p2p' && status === 'idle' && (
             <>
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -798,112 +942,63 @@ export default function Home() {
 
                 {files.length > 0 && (
                   <div className="mt-2 flex flex-col gap-2">
-                    {cloudUpload.cloudEnabled && (
-                      <div 
-                        className="flex items-center justify-between p-2 rounded transition-all"
+                    <div className="flex items-center justify-between minimal-border p-2">
+                      <div className="flex items-center gap-2">
+                        <Users 
+                          size={12} 
+                          style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }} 
+                        />
+                        <span className="text-[10px]" style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}>
+                          MULTI-SHARE
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setMultiShareMode(!multiShareMode)}
+                        className="w-8 h-4 rounded-full transition-all relative"
                         style={{ 
-                          border: saveToCloud ? '1px solid hsl(200 80% 55%)' : '1px solid hsl(var(--border))',
-                          background: saveToCloud ? 'hsl(200 80% 55% / 0.1)' : 'transparent',
-                          boxShadow: saveToCloud ? '0 0 12px hsl(200 80% 55% / 0.3)' : 'none'
+                          background: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--border))',
+                          boxShadow: multiShareMode ? '0 0 8px hsl(var(--accent) / 0.5)' : 'none'
                         }}
+                        data-testid="toggle-multi-share"
                       >
+                        <div 
+                          className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                          style={{ 
+                            background: multiShareMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                            left: multiShareMode ? '16px' : '2px'
+                          }}
+                        />
+                      </button>
+                    </div>
+                    {!multiShareMode && (
+                      <div className="flex items-center justify-between minimal-border p-2">
                         <div className="flex items-center gap-2">
-                          <Cloud 
-                            size={14} 
-                            style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }} 
-                            className={saveToCloud ? 'animate-pulse' : ''}
+                          <Zap 
+                            size={12} 
+                            style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
                           />
-                          <div>
-                            <span className="text-[10px] font-medium" style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}>
-                              SAVE TO CLOUD
-                            </span>
-                            {saveToCloud && (
-                              <div className="text-[8px]" style={{ color: 'hsl(200 80% 55% / 0.7)' }}>
-                                instant upload + sharing
-                              </div>
-                            )}
-                          </div>
+                          <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
+                            FAST MODE
+                          </span>
                         </div>
                         <button
-                          onClick={handleSaveToCloudToggle}
+                          onClick={handleFastModeToggle}
                           className="w-8 h-4 rounded-full transition-all relative"
                           style={{ 
-                            background: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--border))',
-                            boxShadow: saveToCloud ? '0 0 8px hsl(200 80% 55% / 0.5)' : 'none'
+                            background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
+                            boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
                           }}
-                          data-testid="toggle-save-to-cloud"
+                          data-testid="toggle-fast-mode"
                         >
                           <div 
                             className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
                             style={{ 
-                              background: saveToCloud ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                              left: saveToCloud ? '16px' : '2px'
+                              background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                              left: fastMode ? '16px' : '2px'
                             }}
                           />
                         </button>
                       </div>
-                    )}
-                    {!saveToCloud && (
-                      <>
-                        <div className="flex items-center justify-between minimal-border p-2">
-                          <div className="flex items-center gap-2">
-                            <Users 
-                              size={12} 
-                              style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }} 
-                            />
-                            <span className="text-[10px]" style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}>
-                              MULTI-SHARE
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => setMultiShareMode(!multiShareMode)}
-                            className="w-8 h-4 rounded-full transition-all relative"
-                            style={{ 
-                              background: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--border))',
-                              boxShadow: multiShareMode ? '0 0 8px hsl(var(--accent) / 0.5)' : 'none'
-                            }}
-                            data-testid="toggle-multi-share"
-                          >
-                            <div 
-                              className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                              style={{ 
-                                background: multiShareMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                                left: multiShareMode ? '16px' : '2px'
-                              }}
-                            />
-                          </button>
-                        </div>
-                        {!multiShareMode && (
-                          <div className="flex items-center justify-between minimal-border p-2">
-                            <div className="flex items-center gap-2">
-                              <Zap 
-                                size={12} 
-                                style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
-                              />
-                              <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
-                                FAST MODE
-                              </span>
-                            </div>
-                            <button
-                              onClick={handleFastModeToggle}
-                              className="w-8 h-4 rounded-full transition-all relative"
-                              style={{ 
-                                background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
-                                boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
-                              }}
-                              data-testid="toggle-fast-mode"
-                            >
-                              <div 
-                                className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                                style={{ 
-                                  background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                                  left: fastMode ? '16px' : '2px'
-                                }}
-                              />
-                            </button>
-                          </div>
-                        )}
-                      </>
                     )}
                   </div>
                 )}
@@ -984,17 +1079,17 @@ export default function Home() {
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={8}
                       value={receiveCode}
-                      onChange={(e) => setReceiveCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="minimal-input flex-1 text-center tracking-[0.3em] text-sm"
+                      onChange={(e) => setReceiveCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                      placeholder="6/8 digit code"
+                      className="minimal-input flex-1 text-center tracking-[0.2em] text-sm"
                       data-testid="input-receive-code-home"
                     />
                     <button
                       onClick={handleReceiveSubmit}
-                      disabled={receiveCode.length !== 6}
-                      className={`minimal-btn px-3 ${receiveCode.length === 6 ? 'minimal-btn-accent' : ''}`}
+                      disabled={receiveCode.length !== 6 && receiveCode.length !== 8}
+                      className={`minimal-btn px-3 ${(receiveCode.length === 6 || receiveCode.length === 8) ? 'minimal-btn-accent' : ''}`}
                       data-testid="button-receive-home"
                     >
                       <ArrowRight size={12} />
@@ -1005,7 +1100,274 @@ export default function Home() {
             </>
           )}
 
-          {status === 'zipping' && (
+          {/* Cloud Mode */}
+          {transferMode === 'cloud' && cloudUploadStatus === 'idle' && (
+            <>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                    UPLOAD TO CLOUD
+                  </div>
+                  <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    <HardDrive size={10} />
+                    permanent storage
+                  </div>
+                </div>
+                <div
+                  onClick={() => cloudFileInputRef.current?.click()}
+                  className={`drop-zone p-4 cursor-pointer ${isDragOver ? 'active' : ''}`}
+                  style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}
+                  data-testid="cloud-drop-zone"
+                >
+                  <div className="flex items-center gap-3">
+                    <Cloud
+                      size={16}
+                      style={{ color: isDragOver ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}
+                    />
+                    {cloudFiles.length > 0 ? (
+                      <div className="min-w-0 flex-1">
+                        {cloudFiles.length === 1 ? (
+                          <>
+                            <div className="text-xs truncate" style={{ color: 'hsl(200 80% 55%)' }}>
+                              {cloudFiles[0].name}
+                            </div>
+                            <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                              {formatFileSize(cloudFiles[0].size)}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-xs flex items-center gap-1" style={{ color: 'hsl(200 80% 55%)' }}>
+                              <FileArchive size={12} />
+                              {cloudFiles.length} files
+                            </div>
+                            <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                              {formatFileSize(cloudFiles.reduce((sum, f) => sum + f.size, 0))} total
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                        drop or click to select files
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <input
+                  ref={cloudFileInputRef}
+                  type="file"
+                  multiple
+                  onChange={handleCloudFileChange}
+                  className="hidden"
+                  data-testid="cloud-input-file"
+                />
+
+                {cloudFiles.length > 1 && (
+                  <div className="mt-2 max-h-24 overflow-y-auto minimal-border p-2">
+                    {cloudFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between py-1 gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] truncate" style={{ color: 'hsl(var(--text-secondary))' }}>
+                            {file.name}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setCloudFiles(prev => prev.filter((_, i) => i !== index)); 
+                          }}
+                          className="p-0.5 transition-colors"
+                          style={{ color: 'hsl(var(--text-dim))' }}
+                          data-testid={`button-remove-cloud-file-${index}`}
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={startCloudUpload}
+                  disabled={cloudFiles.length === 0}
+                  className="minimal-btn w-full mt-2 flex items-center justify-center gap-2"
+                  style={{ 
+                    borderColor: cloudFiles.length > 0 ? 'hsl(200 80% 55%)' : 'hsl(var(--border))',
+                    color: cloudFiles.length > 0 ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))'
+                  }}
+                  data-testid="button-cloud-upload"
+                >
+                  <Cloud size={12} />
+                  {cloudFiles.length > 1 ? 'zip & upload to cloud' : cloudFiles.length === 1 ? 'upload to cloud' : 'select file(s)'}
+                  {cloudFiles.length > 0 && <ArrowRight size={12} />}
+                </button>
+              </div>
+
+              <div>
+                <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                  RECEIVE
+                </div>
+                <div className="minimal-border p-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={8}
+                      value={receiveCode}
+                      onChange={(e) => setReceiveCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                      placeholder="8-char code"
+                      className="minimal-input flex-1 text-center tracking-[0.2em] text-sm"
+                      data-testid="input-cloud-receive-code"
+                    />
+                    <button
+                      onClick={() => {
+                        if (receiveCode.length === 8) {
+                          navigate(`/receive?code=${receiveCode}&type=cloud`);
+                        } else if (receiveCode.length === 6) {
+                          navigate(`/receive?code=${receiveCode}`);
+                        }
+                      }}
+                      disabled={receiveCode.length !== 6 && receiveCode.length !== 8}
+                      className={`minimal-btn px-3 ${(receiveCode.length === 6 || receiveCode.length === 8) ? 'minimal-btn-accent' : ''}`}
+                      style={{ 
+                        borderColor: receiveCode.length === 8 ? 'hsl(200 80% 55%)' : undefined,
+                        color: receiveCode.length === 8 ? 'hsl(200 80% 55%)' : undefined
+                      }}
+                      data-testid="button-cloud-receive"
+                    >
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Cloud Upload Progress */}
+          {transferMode === 'cloud' && cloudUploadStatus === 'uploading' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                UPLOADING
+              </div>
+              <div className="minimal-border p-4" style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Cloud size={14} style={{ color: 'hsl(200 80% 55%)' }} className="animate-pulse" />
+                  <div className="text-xs truncate" style={{ color: 'hsl(200 80% 55%)' }}>
+                    {cloudFileName || 'uploading...'}
+                  </div>
+                </div>
+                <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
+                  <div 
+                    className="h-full transition-all duration-200" 
+                    style={{ 
+                      width: `${cloudUploadProgress}%`, 
+                      background: 'hsl(200 80% 55%)',
+                      boxShadow: '0 0 8px hsl(200 80% 55% / 0.5)'
+                    }} 
+                  />
+                </div>
+                <div className="text-[10px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {cloudUploadProgress}%
+                </div>
+              </div>
+              <button
+                onClick={resetCloudUpload}
+                className="minimal-btn w-full mt-2"
+                style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
+                data-testid="button-cancel-cloud"
+              >
+                cancel
+              </button>
+            </div>
+          )}
+
+          {/* Cloud Upload Success */}
+          {transferMode === 'cloud' && cloudUploadStatus === 'success' && cloudCode && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                UPLOAD COMPLETE
+              </div>
+              <div 
+                className="p-4 rounded"
+                style={{ 
+                  border: '1px solid hsl(200 80% 55%)',
+                  boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)'
+                }}
+              >
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div 
+                    className="text-xl font-medium tracking-[0.3em]"
+                    style={{ color: 'hsl(200 80% 55%)' }}
+                    data-testid="text-cloud-code"
+                  >
+                    {cloudCode}
+                  </div>
+                  <button
+                    onClick={copyCloudCode}
+                    className="p-2 transition-colors minimal-border"
+                    style={{ 
+                      color: copied ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
+                      borderColor: 'hsl(200 80% 55% / 0.3)'
+                    }}
+                    title="Copy code"
+                    data-testid="button-copy-cloud-code"
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                  </button>
+                </div>
+                <div className="text-[10px] text-center mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
+                  permanent code - share anytime
+                </div>
+                <div className="text-xs truncate mb-3 text-center" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  {cloudFileName}
+                </div>
+                <button
+                  onClick={copyCloudLink}
+                  className="minimal-btn w-full flex items-center justify-center gap-2"
+                  style={{ 
+                    borderColor: 'hsl(200 80% 55% / 0.5)',
+                    color: linkCopied ? 'hsl(200 80% 55%)' : 'hsl(var(--text-secondary))'
+                  }}
+                  data-testid="button-copy-cloud-link"
+                >
+                  {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
+                  {linkCopied ? 'link copied!' : 'copy download link'}
+                </button>
+              </div>
+              <button
+                onClick={resetCloudUpload}
+                className="minimal-btn w-full mt-2"
+                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
+                data-testid="button-upload-another"
+              >
+                upload another
+              </button>
+            </div>
+          )}
+
+          {/* Cloud Upload Failed */}
+          {transferMode === 'cloud' && cloudUploadStatus === 'failed' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(0 65% 55%)' }}>
+                UPLOAD FAILED
+              </div>
+              <div className="minimal-border p-4 text-center" style={{ borderColor: 'hsl(0 65% 55% / 0.3)' }}>
+                <div className="text-xs" style={{ color: 'hsl(0 65% 55%)' }}>
+                  cloud upload failed
+                </div>
+              </div>
+              <button
+                onClick={resetCloudUpload}
+                className="minimal-btn w-full mt-2"
+                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
+                data-testid="button-try-again-cloud"
+              >
+                try again
+              </button>
+            </div>
+          )}
+
+          {transferMode === 'p2p' && status === 'zipping' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 CREATING ZIP
@@ -1039,7 +1401,7 @@ export default function Home() {
             </div>
           )}
 
-          {status === 'waiting' && (
+          {transferMode === 'p2p' && status === 'waiting' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 {multiShareMode ? 'MULTI-SHARE' : 'CODE'}
@@ -1101,7 +1463,7 @@ export default function Home() {
             </div>
           )}
 
-          {(status === 'transferring' || status === 'connected') && (
+          {transferMode === 'p2p' && (status === 'transferring' || status === 'connected') && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 {multiShareMode ? 'MULTI-SHARE TRANSFER' : 'TRANSFER'} {webrtc.isPaused && '(PAUSED)'}
@@ -1178,7 +1540,7 @@ export default function Home() {
             </div>
           )}
 
-          {status === 'complete' && (
+          {transferMode === 'p2p' && status === 'complete' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 COMPLETE
@@ -1201,7 +1563,7 @@ export default function Home() {
             </div>
           )}
 
-          {status === 'cancelled' && (
+          {transferMode === 'p2p' && status === 'cancelled' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 CANCELLED
@@ -1335,115 +1697,6 @@ export default function Home() {
         </div>
       )}
 
-      {(cloudUploadStatus === 'uploading' || cloudUploadStatus === 'success' || cloudUploadStatus === 'failed') && (
-        <div 
-          className="fixed bottom-4 left-4 z-40 p-3 rounded"
-          style={{ 
-            background: 'hsl(var(--bg))',
-            border: '1px solid hsl(200 80% 55% / 0.5)',
-            boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)',
-            minWidth: '200px'
-          }}
-          data-testid="cloud-upload-progress-panel"
-        >
-          <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2">
-              <Cloud 
-                size={14} 
-                style={{ 
-                  color: cloudUploadStatus === 'failed' ? 'hsl(0 65% 55%)' : 'hsl(200 80% 55%)' 
-                }} 
-                className={cloudUploadStatus === 'uploading' ? 'animate-pulse' : ''}
-              />
-              <span className="text-[10px] font-medium" style={{ 
-                color: cloudUploadStatus === 'failed' ? 'hsl(0 65% 55%)' : 'hsl(200 80% 55%)' 
-              }}>
-                {cloudUploadStatus === 'uploading' && 'UPLOADING TO CLOUD'}
-                {cloudUploadStatus === 'success' && 'CLOUD UPLOAD COMPLETE'}
-                {cloudUploadStatus === 'failed' && 'CLOUD UPLOAD FAILED'}
-              </span>
-            </div>
-            {cloudUploadStatus !== 'uploading' && (
-              <button
-                onClick={() => {
-                  setCloudUploadStatus('idle');
-                  setCloudUploadProgress(0);
-                }}
-                className="p-0.5"
-                style={{ color: 'hsl(var(--text-dim))' }}
-                data-testid="button-close-cloud-panel"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          
-          <div className="text-[9px] truncate mb-2" style={{ color: 'hsl(var(--text-secondary))' }}>
-            {cloudFileName || (files.length === 1 ? files[0]?.name : `${files.length} files`)}
-          </div>
-
-          {cloudUploadStatus === 'uploading' && (
-            <>
-              <div className="w-full h-1.5 rounded-full overflow-hidden mb-1" style={{ background: 'hsl(var(--border))' }}>
-                <div 
-                  className="h-full transition-all duration-200" 
-                  style={{ 
-                    width: `${cloudUploadProgress}%`, 
-                    background: 'hsl(200 80% 55%)',
-                    boxShadow: '0 0 8px hsl(200 80% 55% / 0.5)'
-                  }} 
-                />
-              </div>
-              <div className="flex justify-between text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                <span>{cloudUploadProgress}%</span>
-                <button
-                  onClick={() => {
-                    cloudUpload.cancelUpload();
-                    setCloudUploadStatus('idle');
-                    setCloudUploadProgress(0);
-                    setSaveToCloud(false);
-                  }}
-                  className="flex items-center gap-1"
-                  style={{ color: 'hsl(0 65% 55%)' }}
-                  data-testid="button-cancel-cloud-upload"
-                >
-                  <X size={10} />
-                  cancel
-                </button>
-              </div>
-            </>
-          )}
-
-          {cloudUploadStatus === 'success' && (
-            <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(var(--accent))' }}>
-              <Check size={10} />
-              <span>file is now available in cloud</span>
-            </div>
-          )}
-
-          {cloudUploadStatus === 'failed' && (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(0 65% 55%)' }}>
-                <X size={10} />
-                <span>upload failed</span>
-              </div>
-              <button
-                onClick={() => {
-                  if (files.length > 0) {
-                    setCloudUploadStatus('idle');
-                    setCloudUploadProgress(0);
-                  }
-                }}
-                className="text-[9px]"
-                style={{ color: 'hsl(200 80% 55%)' }}
-                data-testid="button-retry-cloud-upload"
-              >
-                retry
-              </button>
-            </div>
-          )}
-        </div>
-      )}
     </RetroLayout>
   );
 }

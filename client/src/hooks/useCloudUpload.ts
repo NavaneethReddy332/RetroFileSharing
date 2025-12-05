@@ -10,6 +10,8 @@ interface CloudUploadResult {
   success: boolean;
   fileName?: string;
   fileId?: string;
+  code?: string;
+  storageKey?: string;
   error?: string;
 }
 
@@ -80,8 +82,13 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
                 success: true,
                 fileName: responseData.fileName,
                 fileId: responseData.fileId,
+                code: responseData.code,
+                storageKey: responseData.storageKey,
               };
               onLog?.('cloud upload complete', 'success');
+              if (responseData.code) {
+                onLog?.(`permanent code: ${responseData.code}`, 'success');
+              }
               onComplete?.(result);
               resolve(result);
             } catch {

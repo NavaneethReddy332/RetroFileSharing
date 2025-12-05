@@ -1,11 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { ArrowRight, CheckCircle, Clock, Pause, Play, X, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle, Clock, Pause, Play, X, Trash2, Cloud, Download, HardDrive } from "lucide-react";
 import { useSearch } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor } from "../lib/utils";
+
+type ReceiveMode = 'p2p' | 'cloud';
 
 interface LogEntry {
   id: number;
@@ -21,11 +23,25 @@ interface CompletedSessionInfo {
   message: string;
 }
 
+interface CloudFileInfo {
+  code: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  downloadUrl: string;
+  downloadCount: number;
+  createdAt: string;
+}
+
 export default function Receive() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const initialCode = urlParams.get('code') || '';
+  const initialType = urlParams.get('type') === 'cloud' ? 'cloud' : 'p2p';
   
+  const [receiveMode, setReceiveMode] = useState<ReceiveMode>(
+    initialCode.length === 8 ? 'cloud' : initialType === 'cloud' ? 'cloud' : 'p2p'
+  );
   const [code, setCode] = useState(initialCode);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'waiting' | 'receiving' | 'complete' | 'already-completed' | 'expired' | 'cancelled'>('idle');
@@ -37,6 +53,9 @@ export default function Receive() {
   const [receivedData, setReceivedData] = useState<{ chunks: ArrayBuffer[], fileInfo: { name: string; size: number; mimeType: string } } | null>(null);
   const [completedSession, setCompletedSession] = useState<CompletedSessionInfo | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'loading' | 'ready' | 'downloading' | 'complete' | 'error'>('idle');
+  const [cloudFileInfo, setCloudFileInfo] = useState<CloudFileInfo | null>(null);
+  const [cloudError, setCloudError] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -84,10 +103,97 @@ export default function Receive() {
   }, [logs]);
 
   useEffect(() => {
-    if (initialCode.length === 6) {
+    if (receiveMode === 'cloud' && initialCode.length === 8) {
+      fetchCloudFile(initialCode);
+    } else if (receiveMode === 'p2p' && initialCode.length === 6) {
       startReceiving(initialCode);
     }
   }, []);
+
+  const fetchCloudFile = async (cloudCode: string) => {
+    if (cloudCode.length !== 8) {
+      addLog('invalid cloud code (must be 8 characters)', 'error');
+      setCloudStatus('error');
+      setCloudError('Invalid cloud code format');
+      return;
+    }
+
+    setCloudStatus('loading');
+    setCloudError('');
+    setLogs([]);
+    addLog(`looking up cloud file: ${cloudCode}`, 'system');
+
+    try {
+      const response = await fetch(`/api/cloud/${cloudCode}`);
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to fetch cloud file');
+      }
+
+      const fileInfo: CloudFileInfo = await response.json();
+      setCloudFileInfo(fileInfo);
+      setCloudStatus('ready');
+      addLog(`found: ${fileInfo.fileName}`, 'success');
+      addLog(`size: ${formatFileSize(fileInfo.fileSize)}`, 'data');
+      addLog(`downloads: ${fileInfo.downloadCount}`, 'info');
+    } catch (error: any) {
+      console.error('Cloud file fetch error:', error);
+      setCloudStatus('error');
+      setCloudError(error.message || 'Failed to fetch cloud file');
+      addLog(error.message || 'Failed to fetch cloud file', 'error');
+    }
+  };
+
+  const downloadCloudFile = async () => {
+    if (!cloudFileInfo) return;
+
+    setCloudStatus('downloading');
+    addLog('downloading...', 'system');
+
+    try {
+      const response = await fetch(cloudFileInfo.downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = cloudFileInfo.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setCloudStatus('complete');
+      addLog('download complete!', 'success');
+
+      addRecord({
+        type: 'receive',
+        fileName: cloudFileInfo.fileName,
+        fileSize: cloudFileInfo.fileSize,
+        code: cloudFileInfo.code,
+        status: 'completed',
+      });
+    } catch (error: any) {
+      console.error('Cloud download error:', error);
+      setCloudStatus('error');
+      setCloudError(error.message || 'Download failed');
+      addLog(error.message || 'Download failed', 'error');
+    }
+  };
+
+  const resetCloudDownload = () => {
+    setCloudStatus('idle');
+    setCloudFileInfo(null);
+    setCloudError('');
+    setCode('');
+    setLogs([]);
+  };
 
   const formatCompletedDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -409,7 +515,8 @@ export default function Receive() {
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
         <div className="w-72 flex flex-col gap-4">
-          {status === 'idle' && (
+          {/* Idle - Code Input (both modes) */}
+          {status === 'idle' && cloudStatus === 'idle' && (
             <>
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -427,27 +534,50 @@ export default function Receive() {
                 </div>
                 <div className="minimal-border p-4">
                   <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
-                    enter 6-digit code
+                    enter 6-digit P2P or 8-char cloud code
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      maxLength={6}
+                      maxLength={8}
                       value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="minimal-input flex-1 text-center tracking-[0.3em] text-sm"
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+                        setCode(val);
+                        if (val.length === 8) {
+                          setReceiveMode('cloud');
+                        } else if (val.length <= 6) {
+                          setReceiveMode('p2p');
+                        }
+                      }}
+                      placeholder="code"
+                      className="minimal-input flex-1 text-center tracking-[0.2em] text-sm"
                       data-testid="input-code"
                     />
                     <button
-                      onClick={() => startReceiving()}
-                      disabled={code.length !== 6}
-                      className={`minimal-btn px-3 ${code.length === 6 ? 'minimal-btn-accent' : ''}`}
+                      onClick={() => {
+                        if (code.length === 8) {
+                          fetchCloudFile(code);
+                        } else if (code.length === 6) {
+                          startReceiving();
+                        }
+                      }}
+                      disabled={code.length !== 6 && code.length !== 8}
+                      className={`minimal-btn px-3 ${(code.length === 6 || code.length === 8) ? 'minimal-btn-accent' : ''}`}
+                      style={{
+                        borderColor: code.length === 8 ? 'hsl(200 80% 55%)' : undefined,
+                        color: code.length === 8 ? 'hsl(200 80% 55%)' : undefined
+                      }}
                       data-testid="button-receive"
                     >
                       <ArrowRight size={12} />
                     </button>
                   </div>
+                  {code.length > 0 && (
+                    <div className="text-[9px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
+                      {code.length <= 6 ? `P2P mode (${code.length}/6)` : `Cloud mode (${code.length}/8)`}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -500,7 +630,147 @@ export default function Receive() {
             </>
           )}
 
-          {status === 'connecting' && (
+          {/* Cloud Mode - Loading */}
+          {receiveMode === 'cloud' && cloudStatus === 'loading' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                LOOKING UP
+              </div>
+              <div className="minimal-border p-4 text-center" style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}>
+                <div className="flex items-center justify-center gap-2">
+                  <Cloud size={14} style={{ color: 'hsl(200 80% 55%)' }} className="animate-pulse" />
+                  <div className="text-xs animate-pulse-subtle" style={{ color: 'hsl(200 80% 55%)' }}>
+                    looking up cloud file...
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cloud Mode - Ready */}
+          {receiveMode === 'cloud' && cloudStatus === 'ready' && cloudFileInfo && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                CLOUD FILE
+              </div>
+              <div 
+                className="p-4 rounded"
+                style={{ 
+                  border: '1px solid hsl(200 80% 55%)',
+                  boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)'
+                }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <HardDrive size={14} style={{ color: 'hsl(200 80% 55%)' }} />
+                  <div className="text-xs truncate flex-1" style={{ color: 'hsl(200 80% 55%)' }}>
+                    {cloudFileInfo.fileName}
+                  </div>
+                </div>
+                <div className="text-[10px] mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
+                  {formatFileSize(cloudFileInfo.fileSize)}
+                </div>
+                <div className="text-[9px] mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
+                  downloads: {cloudFileInfo.downloadCount}
+                </div>
+                <button
+                  onClick={downloadCloudFile}
+                  className="minimal-btn w-full flex items-center justify-center gap-2"
+                  style={{ 
+                    borderColor: 'hsl(200 80% 55%)',
+                    color: 'hsl(200 80% 55%)'
+                  }}
+                  data-testid="button-cloud-download"
+                >
+                  <Download size={12} />
+                  download
+                </button>
+              </div>
+              <button
+                onClick={resetCloudDownload}
+                className="minimal-btn w-full mt-2"
+                data-testid="button-cloud-reset"
+              >
+                try another code
+              </button>
+            </div>
+          )}
+
+          {/* Cloud Mode - Downloading */}
+          {receiveMode === 'cloud' && cloudStatus === 'downloading' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                DOWNLOADING
+              </div>
+              <div className="minimal-border p-4 text-center" style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}>
+                <div className="flex items-center justify-center gap-2">
+                  <Download size={14} style={{ color: 'hsl(200 80% 55%)' }} className="animate-pulse" />
+                  <div className="text-xs animate-pulse-subtle" style={{ color: 'hsl(200 80% 55%)' }}>
+                    downloading...
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cloud Mode - Complete */}
+          {receiveMode === 'cloud' && cloudStatus === 'complete' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                COMPLETE
+              </div>
+              <div 
+                className="p-4 rounded text-center"
+                style={{ 
+                  border: '1px solid hsl(200 80% 55%)',
+                  boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)'
+                }}
+              >
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <CheckCircle size={16} style={{ color: 'hsl(200 80% 55%)' }} />
+                  <span className="text-xs" style={{ color: 'hsl(200 80% 55%)' }}>
+                    download complete
+                  </span>
+                </div>
+                {cloudFileInfo && (
+                  <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    {cloudFileInfo.fileName}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={resetCloudDownload}
+                className="minimal-btn w-full mt-2"
+                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
+                data-testid="button-download-another"
+              >
+                receive another
+              </button>
+            </div>
+          )}
+
+          {/* Cloud Mode - Error */}
+          {receiveMode === 'cloud' && cloudStatus === 'error' && (
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(0 65% 55%)' }}>
+                ERROR
+              </div>
+              <div className="minimal-border p-4 text-center" style={{ borderColor: 'hsl(0 65% 55% / 0.3)' }}>
+                <div className="text-xs mb-2" style={{ color: 'hsl(0 65% 55%)' }}>
+                  {cloudError || 'Failed to fetch cloud file'}
+                </div>
+              </div>
+              <button
+                onClick={resetCloudDownload}
+                className="minimal-btn w-full mt-2"
+                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
+                data-testid="button-try-again-cloud"
+              >
+                try again
+              </button>
+            </div>
+          )}
+
+          {receiveMode === 'p2p' && status === 'connecting' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 CONNECTING
@@ -513,7 +783,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'already-completed' && completedSession && (
+          {receiveMode === 'p2p' && status === 'already-completed' && completedSession && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 ALREADY COMPLETED
@@ -549,7 +819,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'expired' && (
+          {receiveMode === 'p2p' && status === 'expired' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 EXPIRED
@@ -572,7 +842,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'waiting' && (
+          {receiveMode === 'p2p' && status === 'waiting' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 READY
@@ -602,7 +872,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'receiving' && (
+          {receiveMode === 'p2p' && status === 'receiving' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 RECEIVING {webrtc.isPaused && '(PAUSED)'}
@@ -654,7 +924,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'complete' && (
+          {receiveMode === 'p2p' && status === 'complete' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 COMPLETE
@@ -677,7 +947,7 @@ export default function Receive() {
             </div>
           )}
 
-          {status === 'cancelled' && (
+          {receiveMode === 'p2p' && status === 'cancelled' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 CANCELLED
