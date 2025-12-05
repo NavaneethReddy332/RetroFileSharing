@@ -158,60 +158,115 @@ export default function Receive() {
         addLog('connected to server', 'info');
       };
 
+      let isMultiShareSession = false;
+      let multiShareReceiverPromise: Promise<any> | null = null;
+
       ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
 
         switch (message.type) {
           case 'joined':
             addLog('joined as receiver', 'info');
-            setStatus('waiting');
-            addLog('waiting for sender...', 'warn');
+            if (message.isMultiShare) {
+              isMultiShareSession = true;
+              addLog('multi-share session', 'system');
+              setStatus('receiving');
+              addLog('connecting to sender...', 'system');
+              multiShareReceiverPromise = webrtc.initReceiver(ws);
+              multiShareReceiverPromise.then((result) => {
+                setReceivedData(result);
+                saveFile(result.chunks, result.fileInfo);
+                setStatus('complete');
+                ws.send(JSON.stringify({ type: 'transfer-complete' }));
+                
+                addRecord({
+                  type: 'receive',
+                  fileName: result.fileInfo.name,
+                  fileSize: result.fileInfo.size,
+                  code: currentCodeRef.current,
+                  status: 'completed',
+                  duration: result.duration,
+                  avgSpeed: result.avgSpeed
+                });
+              }).catch((err: any) => {
+                if (err.message?.includes('cancelled')) {
+                  addLog('transfer cancelled', 'error');
+                  setStatus('cancelled');
+                  if (fileInfo) {
+                    addRecord({
+                      type: 'receive',
+                      fileName: fileInfo.name,
+                      fileSize: fileInfo.size,
+                      code: currentCodeRef.current,
+                      status: 'cancelled'
+                    });
+                  }
+                } else {
+                  addLog(err.message || 'Transfer failed', 'error');
+                  setStatus('idle');
+                  if (fileInfo) {
+                    addRecord({
+                      type: 'receive',
+                      fileName: fileInfo.name,
+                      fileSize: fileInfo.size,
+                      code: currentCodeRef.current,
+                      status: 'failed'
+                    });
+                  }
+                }
+              });
+            } else {
+              setStatus('waiting');
+              addLog('waiting for sender...', 'warn');
+            }
             break;
 
           case 'peer-connected':
-            addLog('sender connected', 'success');
-            addLog('establishing P2P...', 'system');
-            setStatus('receiving');
-            try {
-              const result = await webrtc.initReceiver(ws);
-              setReceivedData(result);
-              saveFile(result.chunks, result.fileInfo);
-              setStatus('complete');
-              ws.send(JSON.stringify({ type: 'transfer-complete' }));
-              
-              addRecord({
-                type: 'receive',
-                fileName: result.fileInfo.name,
-                fileSize: result.fileInfo.size,
-                code: currentCodeRef.current,
-                status: 'completed',
-                duration: result.duration,
-                avgSpeed: result.avgSpeed
-              });
-            } catch (err: any) {
-              if (err.message?.includes('cancelled')) {
-                addLog('transfer cancelled', 'error');
-                setStatus('cancelled');
-                if (fileInfo) {
-                  addRecord({
-                    type: 'receive',
-                    fileName: fileInfo.name,
-                    fileSize: fileInfo.size,
-                    code: currentCodeRef.current,
-                    status: 'cancelled'
-                  });
-                }
-              } else {
-                addLog(err.message || 'Transfer failed', 'error');
-                setStatus('idle');
-                if (fileInfo) {
-                  addRecord({
-                    type: 'receive',
-                    fileName: fileInfo.name,
-                    fileSize: fileInfo.size,
-                    code: currentCodeRef.current,
-                    status: 'failed'
-                  });
+            if (!isMultiShareSession) {
+              addLog('sender connected', 'success');
+              addLog('establishing P2P...', 'system');
+              setStatus('receiving');
+              try {
+                const result = await webrtc.initReceiver(ws);
+                setReceivedData(result);
+                saveFile(result.chunks, result.fileInfo);
+                setStatus('complete');
+                ws.send(JSON.stringify({ type: 'transfer-complete' }));
+                
+                addRecord({
+                  type: 'receive',
+                  fileName: result.fileInfo.name,
+                  fileSize: result.fileInfo.size,
+                  code: currentCodeRef.current,
+                  status: 'completed',
+                  duration: result.duration,
+                  avgSpeed: result.avgSpeed
+                });
+              } catch (err: any) {
+                if (err.message?.includes('cancelled')) {
+                  addLog('transfer cancelled', 'error');
+                  setStatus('cancelled');
+                  if (fileInfo) {
+                    addRecord({
+                      type: 'receive',
+                      fileName: fileInfo.name,
+                      fileSize: fileInfo.size,
+                      code: currentCodeRef.current,
+                      status: 'cancelled'
+                    });
+                  }
+                } else {
+                  addLog(err.message || 'Transfer failed', 'error');
+                  setStatus('idle');
+                  if (fileInfo) {
+                    addRecord({
+                      type: 'receive',
+                      fileName: fileInfo.name,
+                      fileSize: fileInfo.size,
+                      code: currentCodeRef.current,
+                      status: 'failed'
+                    });
+                  }
                 }
               }
             }
@@ -219,6 +274,12 @@ export default function Receive() {
 
           case 'signal':
             webrtc.handleSignal(message.data);
+            break;
+
+          case 'session-stopped':
+            addLog('session ended by sender', 'warn');
+            setStatus('idle');
+            webrtc.cleanup();
             break;
 
           case 'transfer-complete':
