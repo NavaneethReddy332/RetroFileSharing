@@ -6,6 +6,7 @@ import { insertTransferSessionSchema } from "@shared/schema";
 import { generateSecureCode, generateSessionToken, verifySessionToken, checkRateLimit } from "./lib/security";
 import { b2Service } from "./lib/b2";
 import { z } from "zod";
+import Busboy from "busboy";
 
 interface ReceiverInfo {
   ws: WebSocket;
@@ -31,6 +32,7 @@ interface TransferRoom {
 const rooms = new Map<string, TransferRoom>();
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024;
+const MAX_CLOUD_UPLOAD_SIZE = 500 * 1024 * 1024; // 500MB max for server-proxied cloud uploads
 
 const sessionCreateSchema = z.object({
   fileName: z.string().min(1).max(500),
@@ -250,6 +252,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Cloud upload URL error:", error);
       res.status(500).json({ error: "Failed to generate upload URL" });
+    }
+  });
+
+  // Server-side upload endpoint - proxies file to B2 (avoids CORS issues)
+  // Limited to 500MB to prevent memory issues; larger files should use P2P transfer
+  app.post("/api/cloud/upload", async (req, res) => {
+    try {
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`cloud-upload:${clientIP}`, 5, 60000); // 5 uploads per minute
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      if (!b2Service.isEnabled()) {
+        return res.status(503).json({ error: "Cloud storage is not configured" });
+      }
+
+      // Check content-length header first to reject oversized uploads early
+      const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+      if (contentLength > MAX_CLOUD_UPLOAD_SIZE) {
+        return res.status(400).json({ 
+          error: `File too large for cloud upload. Maximum size is 500MB. Use P2P transfer for larger files.`,
+          maxSize: MAX_CLOUD_UPLOAD_SIZE
+        });
+      }
+
+      const busboy = Busboy({ 
+        headers: req.headers,
+        limits: {
+          fileSize: MAX_CLOUD_UPLOAD_SIZE,
+          files: 1
+        }
+      });
+
+      let fileBuffer: Buffer | null = null;
+      let fileName = '';
+      let contentType = 'application/octet-stream';
+      let fileSizeExceeded = false;
+      let uploadError: Error | null = null;
+
+      busboy.on('file', (fieldname, file, info) => {
+        fileName = info.filename;
+        contentType = info.mimeType || 'application/octet-stream';
+        
+        const chunks: Buffer[] = [];
+        let totalSize = 0;
+        
+        file.on('data', (chunk) => {
+          totalSize += chunk.length;
+          if (totalSize <= MAX_CLOUD_UPLOAD_SIZE) {
+            chunks.push(chunk);
+          }
+        });
+        
+        file.on('limit', () => {
+          fileSizeExceeded = true;
+          file.resume(); // Drain the stream
+        });
+        
+        file.on('end', () => {
+          if (!fileSizeExceeded) {
+            fileBuffer = Buffer.concat(chunks);
+          }
+        });
+        
+        file.on('error', (err) => {
+          uploadError = err;
+        });
+      });
+
+      busboy.on('finish', async () => {
+        if (uploadError) {
+          return res.status(500).json({ error: "File processing error" });
+        }
+
+        if (fileSizeExceeded) {
+          return res.status(400).json({ 
+            error: "File too large for cloud upload. Maximum size is 500MB. Use P2P transfer for larger files.",
+            maxSize: MAX_CLOUD_UPLOAD_SIZE
+          });
+        }
+
+        if (!fileBuffer || !fileName) {
+          return res.status(400).json({ error: "No file provided" });
+        }
+
+        console.log(`Uploading file to B2: ${fileName} (${fileBuffer.length} bytes)`);
+        
+        const result = await b2Service.uploadFile(fileBuffer, fileName, contentType);
+        
+        // Clear buffer to help garbage collection
+        fileBuffer = null;
+        
+        if (result.success) {
+          res.json({
+            success: true,
+            fileName: result.fileName,
+            fileId: result.fileId,
+          });
+        } else {
+          res.status(500).json({ 
+            error: result.error || "Failed to upload file to cloud storage" 
+          });
+        }
+      });
+
+      busboy.on('error', (error) => {
+        console.error('Busboy error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "File upload processing failed" });
+        }
+      });
+
+      req.pipe(busboy);
+    } catch (error) {
+      console.error("Cloud upload error:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to upload file" });
+      }
     }
   });
 

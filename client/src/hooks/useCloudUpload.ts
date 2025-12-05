@@ -9,6 +9,7 @@ interface CloudUploadProgress {
 interface CloudUploadResult {
   success: boolean;
   fileName?: string;
+  fileId?: string;
   error?: string;
 }
 
@@ -23,7 +24,7 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cloudEnabled, setCloudEnabled] = useState<boolean | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   const checkCloudStatus = useCallback(async () => {
     try {
@@ -47,33 +48,16 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
     try {
       setIsUploading(true);
       setUploadProgress(0);
-      abortControllerRef.current = new AbortController();
 
-      onLog?.('requesting cloud upload URL...', 'system');
+      onLog?.('uploading to cloud via server...', 'system');
 
-      const urlResponse = await fetch('/api/cloud/upload-url', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentType: file.type || 'application/octet-stream',
-          fileSize: file.size,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file);
 
-      if (!urlResponse.ok) {
-        const errorData = await urlResponse.json();
-        throw new Error(errorData.error || 'Failed to get upload URL');
-      }
-
-      const { uploadUrl, authorizationToken, fileName } = await urlResponse.json();
-
-      onLog?.('uploading to cloud...', 'data');
-
+      // Use XMLHttpRequest for progress tracking
       const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
       
       const uploadPromise = new Promise<CloudUploadResult>((resolve, reject) => {
         xhr.upload.addEventListener('progress', (e) => {
@@ -90,18 +74,29 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
 
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            const result: CloudUploadResult = {
-              success: true,
-              fileName,
-            };
-            onLog?.('cloud upload complete', 'success');
-            onComplete?.(result);
-            resolve(result);
+            try {
+              const responseData = JSON.parse(xhr.responseText);
+              const result: CloudUploadResult = {
+                success: true,
+                fileName: responseData.fileName,
+                fileId: responseData.fileId,
+              };
+              onLog?.('cloud upload complete', 'success');
+              onComplete?.(result);
+              resolve(result);
+            } catch {
+              const result: CloudUploadResult = {
+                success: true,
+                fileName: file.name,
+              };
+              onComplete?.(result);
+              resolve(result);
+            }
           } else {
             let errorMessage = 'Upload failed';
             try {
               const errorData = JSON.parse(xhr.responseText);
-              errorMessage = errorData.message || errorData.error || errorMessage;
+              errorMessage = errorData.error || errorData.message || errorMessage;
             } catch {}
             reject(new Error(errorMessage));
           }
@@ -115,16 +110,9 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
           reject(new Error('Upload cancelled'));
         });
 
-        abortControllerRef.current?.signal.addEventListener('abort', () => {
-          xhr.abort();
-        });
-
-        xhr.open('POST', uploadUrl);
-        xhr.setRequestHeader('Authorization', authorizationToken);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-        xhr.setRequestHeader('X-Bz-File-Name', encodeURIComponent(fileName));
-        xhr.setRequestHeader('X-Bz-Content-Sha1', 'do_not_verify');
-        xhr.send(file);
+        // Upload to server endpoint (which proxies to B2)
+        xhr.open('POST', '/api/cloud/upload');
+        xhr.send(formData);
       });
 
       return await uploadPromise;
@@ -138,13 +126,13 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
       };
     } finally {
       setIsUploading(false);
-      abortControllerRef.current = null;
+      xhrRef.current = null;
     }
   }, [options]);
 
   const cancelUpload = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+    if (xhrRef.current) {
+      xhrRef.current.abort();
     }
   }, []);
 

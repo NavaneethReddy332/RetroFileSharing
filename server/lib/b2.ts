@@ -13,6 +13,13 @@ interface DownloadAuthResponse {
   fileName: string;
 }
 
+interface UploadResult {
+  success: boolean;
+  fileId?: string;
+  fileName?: string;
+  error?: string;
+}
+
 class B2Service {
   private b2: B2 | null = null;
   private authorized: boolean = false;
@@ -277,6 +284,57 @@ class B2Service {
     } catch (error: any) {
       console.error('Failed to delete file:', error);
       return false;
+    }
+  }
+
+  async uploadFile(fileBuffer: Buffer, originalFileName: string, contentType: string): Promise<UploadResult> {
+    if (!this.isEnabled()) {
+      return { success: false, error: 'Cloud storage is not configured' };
+    }
+
+    try {
+      if (!this.authorized) {
+        const success = await this.authorize();
+        if (!success) {
+          return { success: false, error: 'Failed to authorize with B2' };
+        }
+      }
+
+      const bucketId = process.env.B2_BUCKET_ID!;
+      
+      // Get upload URL
+      const uploadUrlResponse = await this.b2!.getUploadUrl({ bucketId });
+      
+      const timestamp = Date.now();
+      const safeFileName = `${timestamp}-${originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+      // Upload file to B2
+      const uploadResponse = await this.b2!.uploadFile({
+        uploadUrl: uploadUrlResponse.data.uploadUrl,
+        uploadAuthToken: uploadUrlResponse.data.authorizationToken,
+        fileName: safeFileName,
+        data: fileBuffer,
+        mime: contentType || 'application/octet-stream',
+      });
+
+      return {
+        success: true,
+        fileId: uploadResponse.data.fileId,
+        fileName: safeFileName,
+      };
+    } catch (error: any) {
+      console.error('Failed to upload file to B2:', error);
+      
+      // Retry on auth failure
+      if (error.response?.status === 401) {
+        this.authorized = false;
+        return this.uploadFile(fileBuffer, originalFileName, contentType);
+      }
+      
+      return { 
+        success: false, 
+        error: error.message || 'Upload failed' 
+      };
     }
   }
 }
