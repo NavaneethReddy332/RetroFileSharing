@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
+import { useMultiWebRTC } from "../hooks/useMultiWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
@@ -42,6 +43,11 @@ export default function Home() {
   const [zipProgress, setZipProgress] = useState(0);
   const [fastMode, setFastMode] = useState(false);
   const [showFastModeWarning, setShowFastModeWarning] = useState(false);
+  const [multiShareMode, setMultiShareMode] = useState(false);
+  const [receiverCount, setReceiverCount] = useState(0);
+  const [maxReceivers] = useState(4);
+  const [multiShareStatus, setMultiShareStatus] = useState<'idle' | 'waiting' | 'active'>('idle');
+  const [receiverProgress, setReceiverProgress] = useState<Map<string, { percent: number; speed: number }>>(new Map());
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -73,6 +79,37 @@ export default function Home() {
         setStatus('idle');
       }
       setCurrentSpeed(0);
+    },
+    onLog: addLog
+  });
+
+  const multiWebrtc = useMultiWebRTC({
+    onProgress: (receiverId, percent, speed, transferred, total) => {
+      setReceiverProgress(prev => {
+        const newMap = new Map(prev);
+        newMap.set(receiverId, { percent, speed });
+        
+        // Compute aggregate progress from the new map (not stale state)
+        const allProgress = Array.from(newMap.values());
+        if (allProgress.length > 0) {
+          const avgPercent = allProgress.reduce((sum, p) => sum + p.percent, 0) / allProgress.length;
+          const maxSpeed = Math.max(...allProgress.map(p => p.speed));
+          setProgress(Math.round(avgPercent));
+          setCurrentSpeed(maxSpeed);
+        }
+        
+        return newMap;
+      });
+    },
+    onReceiverComplete: (receiverId) => {
+      addLog(`receiver ${receiverId.slice(-4)} complete`, 'success');
+    },
+    onError: (error, receiverId) => {
+      if (receiverId) {
+        addLog(`error for ${receiverId.slice(-4)}: ${error}`, 'error');
+      } else {
+        addLog(error, 'error');
+      }
     },
     onLog: addLog
   });
@@ -267,8 +304,13 @@ export default function Home() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-sender', code: data.code, token: sessionToken }));
+        ws.send(JSON.stringify({ type: 'join-sender', code: data.code, token: sessionToken, isMultiShare: multiShareMode }));
         addLog('connected to server', 'info');
+        if (multiShareMode) {
+          multiWebrtc.initMultiSender(ws, fileToSend);
+          setMultiShareStatus('waiting');
+          addLog('multi-share mode active', 'system');
+        }
       };
 
       ws.onmessage = async (event) => {
@@ -277,71 +319,120 @@ export default function Home() {
         switch (message.type) {
           case 'joined':
             addLog('joined as sender', 'info');
+            if (message.isMultiShare) {
+              addLog('waiting for receivers (0/4)...', 'warn');
+            }
             break;
 
           case 'peer-connected':
-            addLog('receiver connected', 'success');
-            addLog('establishing P2P...', 'system');
-            setStatus('transferring');
-            setTransferStartTime(Date.now());
-            setTotalBytes(fileToSend.size);
-            setBytesTransferred(0);
-            try {
-              const result = await webrtc.initSender(ws, fileToSend, fastMode);
-              ws.send(JSON.stringify({ type: 'transfer-complete' }));
-              
-              addRecord({
-                type: 'send',
-                fileName: fileToSend.name,
-                fileSize: fileToSend.size,
-                code: data.code,
-                status: 'completed',
-                duration: result.duration,
-                avgSpeed: result.avgSpeed
-              });
-            } catch (err: any) {
-              if (err.message?.includes('cancelled')) {
-                addLog('transfer cancelled', 'error');
-                setStatus('cancelled');
+            if (!multiShareMode) {
+              addLog('receiver connected', 'success');
+              addLog('establishing P2P...', 'system');
+              setStatus('transferring');
+              setTransferStartTime(Date.now());
+              setTotalBytes(fileToSend.size);
+              setBytesTransferred(0);
+              try {
+                const result = await webrtc.initSender(ws, fileToSend, fastMode);
+                ws.send(JSON.stringify({ type: 'transfer-complete' }));
+                
                 addRecord({
                   type: 'send',
                   fileName: fileToSend.name,
                   fileSize: fileToSend.size,
                   code: data.code,
-                  status: 'cancelled'
+                  status: 'completed',
+                  duration: result.duration,
+                  avgSpeed: result.avgSpeed
                 });
-              } else {
-                addLog(err.message || 'Transfer failed', 'error');
-                setStatus('idle');
-                addRecord({
-                  type: 'send',
-                  fileName: fileToSend.name,
-                  fileSize: fileToSend.size,
-                  code: data.code,
-                  status: 'failed'
-                });
+              } catch (err: any) {
+                if (err.message?.includes('cancelled')) {
+                  addLog('transfer cancelled', 'error');
+                  setStatus('cancelled');
+                  addRecord({
+                    type: 'send',
+                    fileName: fileToSend.name,
+                    fileSize: fileToSend.size,
+                    code: data.code,
+                    status: 'cancelled'
+                  });
+                } else {
+                  addLog(err.message || 'Transfer failed', 'error');
+                  setStatus('idle');
+                  addRecord({
+                    type: 'send',
+                    fileName: fileToSend.name,
+                    fileSize: fileToSend.size,
+                    code: data.code,
+                    status: 'failed'
+                  });
+                }
               }
             }
             break;
 
+          case 'multi-peer-connected':
+            if (multiShareMode && message.receiverId) {
+              addLog(`receiver ${message.receiverId.slice(-4)} joined`, 'success');
+              setMultiShareStatus('active');
+              setStatus('transferring');
+              multiWebrtc.handleNewReceiver(message.receiverId);
+            }
+            break;
+
+          case 'multi-peer-disconnected':
+            if (multiShareMode && message.receiverId) {
+              addLog(`receiver ${message.receiverId.slice(-4)} left`, 'warn');
+              multiWebrtc.removeReceiver(message.receiverId);
+            }
+            break;
+
+          case 'receiver-count-update':
+            setReceiverCount(message.count);
+            if (message.count === 0 && multiShareStatus === 'active') {
+              addLog('all receivers done, waiting for more...', 'warn');
+            }
+            break;
+
           case 'signal':
-            webrtc.handleSignal(message.data);
+            if (multiShareMode && message.fromReceiverId) {
+              multiWebrtc.handleSignal(message.data, message.fromReceiverId);
+            } else {
+              webrtc.handleSignal(message.data);
+            }
             break;
 
           case 'transfer-complete':
-            addLog('transfer verified', 'success');
+            if (!multiShareMode) {
+              addLog('transfer verified', 'success');
+              setStatus('complete');
+            }
+            break;
+
+          case 'multi-share-stopped':
+            addLog('multi-share session ended', 'success');
             setStatus('complete');
+            setMultiShareStatus('idle');
+            setReceiverCount(0);
+            setReceiverProgress(new Map());
+            setProgress(0);
+            setCurrentSpeed(0);
+            multiWebrtc.cleanup();
             break;
 
           case 'peer-disconnected':
-            addLog('receiver disconnected', 'error');
-            setStatus('idle');
-            webrtc.cleanup();
+            if (!multiShareMode) {
+              addLog('receiver disconnected', 'error');
+              setStatus('idle');
+              webrtc.cleanup();
+            }
             break;
 
           case 'error':
             addLog(`${message.error}`, 'error');
-            setStatus('idle');
+            if (!multiShareMode) {
+              setStatus('idle');
+            }
             break;
         }
       };
@@ -402,6 +493,15 @@ export default function Home() {
     }
   };
 
+  const handleStopMultiShare = () => {
+    multiWebrtc.stopMultiShare();
+    setMultiShareStatus('idle');
+    setReceiverCount(0);
+    setReceiverProgress(new Map());
+    setProgress(0);
+    setCurrentSpeed(0);
+  };
+
   const resetSender = () => {
     if (wsRef.current) {
       wsRef.current.close();
@@ -413,6 +513,7 @@ export default function Home() {
       zipWorkerRef.current = null;
     }
     webrtc.cleanup();
+    multiWebrtc.cleanup();
     setFiles([]);
     setZipFile(null);
     setCode("");
@@ -424,6 +525,9 @@ export default function Home() {
     setTotalBytes(0);
     setLogs([]);
     setCopied(false);
+    setMultiShareStatus('idle');
+    setReceiverCount(0);
+    setReceiverProgress(new Map());
   };
 
   const handleReceiveSubmit = () => {
@@ -570,33 +674,65 @@ export default function Home() {
                 )}
 
                 {files.length > 0 && (
-                  <div className="mt-2 flex items-center justify-between minimal-border p-2">
-                    <div className="flex items-center gap-2">
-                      <Zap 
-                        size={12} 
-                        style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
-                      />
-                      <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
-                        FAST MODE
-                      </span>
-                    </div>
-                    <button
-                      onClick={handleFastModeToggle}
-                      className={`w-8 h-4 rounded-full transition-all relative ${fastMode ? '' : ''}`}
-                      style={{ 
-                        background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
-                        boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
-                      }}
-                      data-testid="toggle-fast-mode"
-                    >
-                      <div 
-                        className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                  <div className="mt-2 flex flex-col gap-2">
+                    <div className="flex items-center justify-between minimal-border p-2">
+                      <div className="flex items-center gap-2">
+                        <Users 
+                          size={12} 
+                          style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }} 
+                        />
+                        <span className="text-[10px]" style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}>
+                          MULTI-SHARE
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setMultiShareMode(!multiShareMode)}
+                        className="w-8 h-4 rounded-full transition-all relative"
                         style={{ 
-                          background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                          left: fastMode ? '16px' : '2px'
+                          background: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--border))',
+                          boxShadow: multiShareMode ? '0 0 8px hsl(var(--accent) / 0.5)' : 'none'
                         }}
-                      />
-                    </button>
+                        data-testid="toggle-multi-share"
+                      >
+                        <div 
+                          className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                          style={{ 
+                            background: multiShareMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                            left: multiShareMode ? '16px' : '2px'
+                          }}
+                        />
+                      </button>
+                    </div>
+                    {!multiShareMode && (
+                      <div className="flex items-center justify-between minimal-border p-2">
+                        <div className="flex items-center gap-2">
+                          <Zap 
+                            size={12} 
+                            style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
+                          />
+                          <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
+                            FAST MODE
+                          </span>
+                        </div>
+                        <button
+                          onClick={handleFastModeToggle}
+                          className="w-8 h-4 rounded-full transition-all relative"
+                          style={{ 
+                            background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
+                            boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
+                          }}
+                          data-testid="toggle-fast-mode"
+                        >
+                          <div 
+                            className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                            style={{ 
+                              background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                              left: fastMode ? '16px' : '2px'
+                            }}
+                          />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -734,7 +870,7 @@ export default function Home() {
           {status === 'waiting' && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-                CODE
+                {multiShareMode ? 'MULTI-SHARE' : 'CODE'}
               </div>
               <div className="minimal-border-accent p-4">
                 <div className="flex items-center justify-center gap-3">
@@ -755,29 +891,66 @@ export default function Home() {
                     {copied ? <Check size={14} /> : <Copy size={14} />}
                   </button>
                 </div>
-                <div className="text-[10px] mt-2 text-center animate-pulse-subtle" style={{ color: 'hsl(var(--text-dim))' }}>
-                  waiting for receiver
-                </div>
+                {multiShareMode ? (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-center gap-2 text-sm" style={{ color: 'hsl(var(--accent))' }}>
+                      <Users size={14} />
+                      <span data-testid="text-receiver-count">Receivers: {receiverCount}/{maxReceivers}</span>
+                    </div>
+                    <div className="text-[10px] mt-2 text-center animate-pulse-subtle" style={{ color: 'hsl(var(--text-dim))' }}>
+                      waiting for receivers...
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[10px] mt-2 text-center animate-pulse-subtle" style={{ color: 'hsl(var(--text-dim))' }}>
+                    waiting for receiver
+                  </div>
+                )}
               </div>
-              <button
-                onClick={resetSender}
-                className="minimal-btn w-full mt-2"
-                data-testid="button-cancel"
-              >
-                cancel
-              </button>
+              {multiShareMode ? (
+                <button
+                  onClick={handleStopMultiShare}
+                  className="minimal-btn w-full mt-2 flex items-center justify-center gap-2"
+                  style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
+                  data-testid="button-stop-multi-share"
+                >
+                  <Square size={12} />
+                  stop sharing
+                </button>
+              ) : (
+                <button
+                  onClick={resetSender}
+                  className="minimal-btn w-full mt-2"
+                  data-testid="button-cancel"
+                >
+                  cancel
+                </button>
+              )}
             </div>
           )}
 
           {(status === 'transferring' || status === 'connected') && (
             <div>
               <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-                TRANSFER {webrtc.isPaused && '(PAUSED)'}
+                {multiShareMode ? 'MULTI-SHARE TRANSFER' : 'TRANSFER'} {webrtc.isPaused && '(PAUSED)'}
               </div>
               <div className="minimal-border p-4">
                 <div className="text-xs truncate mb-3" style={{ color: 'hsl(var(--accent))' }}>
                   {activeFile?.name || `${files.length} files (zipped)`}
                 </div>
+                {multiShareMode && (
+                  <div className="flex items-center justify-between mb-3 text-sm" style={{ color: 'hsl(var(--accent))' }}>
+                    <div className="flex items-center gap-2">
+                      <Users size={14} />
+                      <span data-testid="text-receiver-count-active">Receivers: {receiverCount}/{maxReceivers}</span>
+                    </div>
+                    {receiverCount === 0 && (
+                      <span className="text-[10px] animate-pulse-subtle" style={{ color: 'hsl(var(--text-dim))' }}>
+                        Waiting for more...
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="progress-track mb-2">
                   <div 
                     className="progress-fill"
@@ -792,32 +965,44 @@ export default function Home() {
                     </span>
                   )}
                 </div>
-                {currentSpeed > 0 && bytesRemaining > 0 && !webrtc.isPaused && (
+                {!multiShareMode && currentSpeed > 0 && bytesRemaining > 0 && !webrtc.isPaused && (
                   <div className="flex items-center gap-1 text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
                     <Clock size={10} />
                     <span>{formatTimeRemaining(bytesRemaining, currentSpeed)}</span>
                   </div>
                 )}
               </div>
-              <div className="flex gap-2 mt-2">
+              {multiShareMode ? (
                 <button
-                  onClick={handlePauseResume}
-                  className="minimal-btn flex-1 flex items-center justify-center gap-2 minimal-btn-accent"
-                  data-testid="button-pause-resume"
-                >
-                  {webrtc.isPaused ? <Play size={12} /> : <Pause size={12} />}
-                  {webrtc.isPaused ? 'resume' : 'pause'}
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className="minimal-btn flex-1 flex items-center justify-center gap-2"
+                  onClick={handleStopMultiShare}
+                  className="minimal-btn w-full mt-2 flex items-center justify-center gap-2"
                   style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
-                  data-testid="button-cancel-transfer"
+                  data-testid="button-stop-multi-share-active"
                 >
-                  <X size={12} />
-                  cancel
+                  <Square size={12} />
+                  stop sharing
                 </button>
-              </div>
+              ) : (
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handlePauseResume}
+                    className="minimal-btn flex-1 flex items-center justify-center gap-2 minimal-btn-accent"
+                    data-testid="button-pause-resume"
+                  >
+                    {webrtc.isPaused ? <Play size={12} /> : <Pause size={12} />}
+                    {webrtc.isPaused ? 'resume' : 'pause'}
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    className="minimal-btn flex-1 flex items-center justify-center gap-2"
+                    style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
+                    data-testid="button-cancel-transfer"
+                  >
+                    <X size={12} />
+                    cancel
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

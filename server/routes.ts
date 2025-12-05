@@ -6,15 +6,25 @@ import { insertTransferSessionSchema } from "@shared/schema";
 import { generateSecureCode, generateSessionToken, verifySessionToken, checkRateLimit } from "./lib/security";
 import { z } from "zod";
 
+interface ReceiverInfo {
+  ws: WebSocket;
+  id: string;
+  authenticated: boolean;
+  transferComplete: boolean;
+}
+
 interface TransferRoom {
   sender?: WebSocket;
   receiver?: WebSocket;
+  receivers: Map<string, ReceiverInfo>;
   sessionId: number;
   fileName: string;
   fileSize: number;
   mimeType: string;
   senderAuthenticated: boolean;
   receiverAuthenticated: boolean;
+  isMultiShare: boolean;
+  maxReceivers: number;
 }
 
 const rooms = new Map<string, TransferRoom>();
@@ -172,9 +182,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
+  let receiverIdCounter = 0;
+  const generateReceiverId = () => `r${Date.now()}-${++receiverIdCounter}`;
+
   wss.on("connection", (ws: WebSocket, req) => {
     let currentCode: string | null = null;
     let role: "sender" | "receiver" | null = null;
+    let receiverId: string | null = null;
     
     const clientIP = req.socket.remoteAddress || 'unknown';
     const wsRateLimit = checkRateLimit(`ws:${clientIP}`, 50, 60000);
@@ -184,13 +198,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
 
+    const sendReceiverCountUpdate = (room: TransferRoom) => {
+      if (room.sender && room.sender.readyState === WebSocket.OPEN && room.isMultiShare) {
+        const activeReceivers = Array.from(room.receivers.values()).filter(r => r.authenticated);
+        room.sender.send(JSON.stringify({
+          type: "receiver-count-update",
+          count: activeReceivers.length,
+          maxReceivers: room.maxReceivers,
+          receivers: activeReceivers.map(r => ({ id: r.id, transferComplete: r.transferComplete }))
+        }));
+      }
+    };
+
     ws.on("message", async (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString());
 
         switch (message.type) {
           case "join-sender": {
-            const { code, token } = message;
+            const { code, token, isMultiShare = false } = message;
             
             if (!token) {
               ws.send(JSON.stringify({ type: "error", error: "Authentication required" }));
@@ -220,17 +246,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 mimeType: session.mimeType,
                 senderAuthenticated: false,
                 receiverAuthenticated: false,
+                receivers: new Map(),
+                isMultiShare: isMultiShare,
+                maxReceivers: isMultiShare ? 4 : 1,
               };
               rooms.set(code, room);
             }
 
             room.sender = ws;
             room.senderAuthenticated = true;
-            ws.send(JSON.stringify({ type: "joined", role: "sender" }));
+            room.isMultiShare = isMultiShare;
+            room.maxReceivers = isMultiShare ? 4 : 1;
+            
+            ws.send(JSON.stringify({ type: "joined", role: "sender", isMultiShare }));
 
-            if (room.receiver && room.sender && room.senderAuthenticated && room.receiverAuthenticated) {
+            if (!isMultiShare && room.receiver && room.sender && room.senderAuthenticated && room.receiverAuthenticated) {
               room.sender.send(JSON.stringify({ type: "peer-connected" }));
               room.receiver.send(JSON.stringify({ type: "peer-connected" }));
+            }
+            
+            if (isMultiShare) {
+              sendReceiverCountUpdate(room);
             }
             break;
           }
@@ -266,23 +302,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 mimeType: session.mimeType,
                 senderAuthenticated: false,
                 receiverAuthenticated: false,
+                receivers: new Map(),
+                isMultiShare: false,
+                maxReceivers: 1,
               };
               rooms.set(code, room);
             }
 
-            room.receiver = ws;
-            room.receiverAuthenticated = true;
-            ws.send(JSON.stringify({
-              type: "joined",
-              role: "receiver",
-              fileName: room.fileName,
-              fileSize: room.fileSize,
-              mimeType: room.mimeType,
-            }));
+            if (room.isMultiShare) {
+              if (room.receivers.size >= room.maxReceivers) {
+                ws.send(JSON.stringify({ type: "error", error: "Session is full (max 4 receivers)" }));
+                return;
+              }
+              
+              receiverId = generateReceiverId();
+              const receiverInfo: ReceiverInfo = {
+                ws,
+                id: receiverId,
+                authenticated: true,
+                transferComplete: false,
+              };
+              room.receivers.set(receiverId, receiverInfo);
+              
+              ws.send(JSON.stringify({
+                type: "joined",
+                role: "receiver",
+                receiverId,
+                fileName: room.fileName,
+                fileSize: room.fileSize,
+                mimeType: room.mimeType,
+                isMultiShare: true,
+              }));
+              
+              sendReceiverCountUpdate(room);
+              
+              if (room.sender && room.sender.readyState === WebSocket.OPEN) {
+                room.sender.send(JSON.stringify({ 
+                  type: "multi-peer-connected", 
+                  receiverId 
+                }));
+              }
+            } else {
+              room.receiver = ws;
+              room.receiverAuthenticated = true;
+              ws.send(JSON.stringify({
+                type: "joined",
+                role: "receiver",
+                fileName: room.fileName,
+                fileSize: room.fileSize,
+                mimeType: room.mimeType,
+                isMultiShare: false,
+              }));
 
-            if (room.sender && room.receiver && room.senderAuthenticated && room.receiverAuthenticated) {
-              room.sender.send(JSON.stringify({ type: "peer-connected" }));
-              room.receiver.send(JSON.stringify({ type: "peer-connected" }));
+              if (room.sender && room.receiver && room.senderAuthenticated && room.receiverAuthenticated) {
+                room.sender.send(JSON.stringify({ type: "peer-connected" }));
+                room.receiver.send(JSON.stringify({ type: "peer-connected" }));
+              }
             }
             break;
           }
@@ -292,12 +367,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const room = rooms.get(currentCode);
             if (!room) return;
 
-            const target = role === "sender" ? room.receiver : room.sender;
-            if (target && target.readyState === WebSocket.OPEN) {
-              target.send(JSON.stringify({
-                type: "signal",
-                data: message.data,
-              }));
+            if (room.isMultiShare) {
+              if (role === "sender" && message.targetReceiverId) {
+                const targetReceiver = room.receivers.get(message.targetReceiverId);
+                if (targetReceiver && targetReceiver.ws.readyState === WebSocket.OPEN) {
+                  targetReceiver.ws.send(JSON.stringify({
+                    type: "signal",
+                    data: message.data,
+                  }));
+                }
+              } else if (role === "receiver" && receiverId) {
+                if (room.sender && room.sender.readyState === WebSocket.OPEN) {
+                  room.sender.send(JSON.stringify({
+                    type: "signal",
+                    data: message.data,
+                    fromReceiverId: receiverId,
+                  }));
+                }
+              }
+            } else {
+              const target = role === "sender" ? room.receiver : room.sender;
+              if (target && target.readyState === WebSocket.OPEN) {
+                target.send(JSON.stringify({
+                  type: "signal",
+                  data: message.data,
+                }));
+              }
             }
             break;
           }
@@ -307,13 +402,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const room = rooms.get(currentCode);
             if (!room) return;
 
+            if (room.isMultiShare) {
+              if (role === "receiver" && receiverId) {
+                const receiverInfo = room.receivers.get(receiverId);
+                if (receiverInfo) {
+                  receiverInfo.transferComplete = true;
+                  sendReceiverCountUpdate(room);
+                }
+                ws.send(JSON.stringify({ type: "transfer-complete" }));
+              }
+            } else {
+              await storage.markSessionCompleted(room.sessionId);
+
+              if (room.sender && room.sender.readyState === WebSocket.OPEN) {
+                room.sender.send(JSON.stringify({ type: "transfer-complete" }));
+              }
+              if (room.receiver && room.receiver.readyState === WebSocket.OPEN) {
+                room.receiver.send(JSON.stringify({ type: "transfer-complete" }));
+              }
+
+              rooms.delete(currentCode);
+            }
+            break;
+          }
+
+          case "stop-multi-share": {
+            if (!currentCode || role !== "sender") return;
+            const room = rooms.get(currentCode);
+            if (!room || !room.isMultiShare) return;
+
+            for (const [id, receiver] of Array.from(room.receivers.entries())) {
+              if (receiver.ws.readyState === WebSocket.OPEN) {
+                receiver.ws.send(JSON.stringify({ type: "session-stopped" }));
+              }
+            }
+
             await storage.markSessionCompleted(room.sessionId);
 
             if (room.sender && room.sender.readyState === WebSocket.OPEN) {
-              room.sender.send(JSON.stringify({ type: "transfer-complete" }));
-            }
-            if (room.receiver && room.receiver.readyState === WebSocket.OPEN) {
-              room.receiver.send(JSON.stringify({ type: "transfer-complete" }));
+              room.sender.send(JSON.stringify({ type: "multi-share-stopped" }));
             }
 
             rooms.delete(currentCode);
@@ -332,18 +459,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (role === "sender") {
             room.sender = undefined;
             room.senderAuthenticated = false;
-            if (room.receiver && room.receiver.readyState === WebSocket.OPEN) {
-              room.receiver.send(JSON.stringify({ type: "peer-disconnected" }));
+            
+            if (room.isMultiShare) {
+              for (const [id, receiver] of Array.from(room.receivers.entries())) {
+                if (receiver.ws.readyState === WebSocket.OPEN) {
+                  receiver.ws.send(JSON.stringify({ type: "peer-disconnected" }));
+                }
+              }
+              rooms.delete(currentCode);
+            } else {
+              if (room.receiver && room.receiver.readyState === WebSocket.OPEN) {
+                room.receiver.send(JSON.stringify({ type: "peer-disconnected" }));
+              }
             }
           } else if (role === "receiver") {
-            room.receiver = undefined;
-            room.receiverAuthenticated = false;
-            if (room.sender && room.sender.readyState === WebSocket.OPEN) {
-              room.sender.send(JSON.stringify({ type: "peer-disconnected" }));
+            if (room.isMultiShare && receiverId) {
+              room.receivers.delete(receiverId);
+              sendReceiverCountUpdate(room);
+              
+              if (room.sender && room.sender.readyState === WebSocket.OPEN) {
+                room.sender.send(JSON.stringify({ 
+                  type: "multi-peer-disconnected", 
+                  receiverId 
+                }));
+              }
+            } else {
+              room.receiver = undefined;
+              room.receiverAuthenticated = false;
+              if (room.sender && room.sender.readyState === WebSocket.OPEN) {
+                room.sender.send(JSON.stringify({ type: "peer-disconnected" }));
+              }
             }
           }
 
-          if (!room.sender && !room.receiver) {
+          if (!room.sender && !room.receiver && room.receivers.size === 0) {
             rooms.delete(currentCode);
           }
         }
@@ -356,8 +505,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     for (const [code, room] of roomEntries) {
       const senderAlive = room.sender && room.sender.readyState === WebSocket.OPEN;
       const receiverAlive = room.receiver && room.receiver.readyState === WebSocket.OPEN;
+      const hasActiveReceivers = room.isMultiShare && Array.from(room.receivers.values()).some(r => r.ws.readyState === WebSocket.OPEN);
       
-      if (!senderAlive && !receiverAlive) {
+      if (!senderAlive && !receiverAlive && !hasActiveReceivers) {
         rooms.delete(code);
       }
     }
