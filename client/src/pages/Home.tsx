@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useMultiWebRTC } from "../hooks/useMultiWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
+import { useCloudUpload } from "../hooks/useCloudUpload";
 import { SpeedIndicator } from "../components/SpeedIndicator";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
 import ZipWorker from "../workers/zipWorker?worker";
@@ -40,6 +41,8 @@ export default function Home() {
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const zipWorkerRef = useRef<Worker | null>(null);
+  const fileToUploadRef = useRef<File | null>(null);
+  const saveToCloudRef = useRef(false);
   const [zipProgress, setZipProgress] = useState(0);
   const [fastMode, setFastMode] = useState(false);
   const [showFastModeWarning, setShowFastModeWarning] = useState(false);
@@ -49,17 +52,48 @@ export default function Home() {
   const [multiShareStatus, setMultiShareStatus] = useState<'idle' | 'waiting' | 'active'>('idle');
   const [receiverProgress, setReceiverProgress] = useState<Map<string, { percent: number; speed: number }>>(new Map());
   const [completedReceivers, setCompletedReceivers] = useState<Set<string>>(new Set());
+  const [saveToCloud, setSaveToCloud] = useState(false);
+  const [cloudUploadProgress, setCloudUploadProgress] = useState(0);
+  const [cloudUploadStatus, setCloudUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'failed'>('idle');
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
+
+  const addLog = (message: string, type: LogEntry['type'] = 'info') => {
+    setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
+  };
+  
+  const cloudUpload = useCloudUpload({
+    onProgress: (progress) => {
+      setCloudUploadProgress(progress.percent);
+      setCloudUploadStatus('uploading');
+    },
+    onComplete: (result) => {
+      if (result.success) {
+        addLog(`saved to cloud: ${result.fileName}`, 'success');
+        setCloudUploadStatus('success');
+      } else {
+        setCloudUploadStatus('failed');
+      }
+    },
+    onError: (error) => {
+      addLog(`cloud error: ${error}`, 'error');
+      setCloudUploadStatus('failed');
+    },
+    onLog: addLog,
+  });
+
+  useEffect(() => {
+    cloudUpload.checkCloudStatus();
+  }, []);
 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
 
-  const addLog = (message: string, type: LogEntry['type'] = 'info') => {
-    setLogs(prev => [...prev, { id: logIdRef.current++, message, type, timestamp: new Date() }]);
-  };
+  useEffect(() => {
+    saveToCloudRef.current = saveToCloud;
+  }, [saveToCloud]);
 
   const webrtc = useWebRTC({
     onProgress: (percent, speed, transferred, total) => {
@@ -288,6 +322,7 @@ export default function Home() {
       fileToSend = files[0];
     }
 
+    fileToUploadRef.current = fileToSend;
     addLog('creating session...', 'system');
 
     try {
@@ -419,6 +454,11 @@ export default function Home() {
             if (!multiShareMode) {
               addLog('transfer verified', 'success');
               setStatus('complete');
+              
+              if (saveToCloudRef.current && fileToUploadRef.current) {
+                addLog('starting cloud backup...', 'system');
+                cloudUpload.uploadToCloud(fileToUploadRef.current);
+              }
             }
             break;
 
@@ -532,12 +572,16 @@ export default function Home() {
     }
     webrtc.cleanup();
     multiWebrtc.cleanup();
+    cloudUpload.cancelUpload();
+    fileToUploadRef.current = null;
     setFiles([]);
     setZipFile(null);
     setCode("");
     setStatus('idle');
     setProgress(0);
     setZipProgress(0);
+    setCloudUploadProgress(0);
+    setCloudUploadStatus('idle');
     setCurrentSpeed(0);
     setBytesTransferred(0);
     setTotalBytes(0);
@@ -545,6 +589,7 @@ export default function Home() {
     setCopied(false);
     setMultiShareMode(false);
     setFastMode(false);
+    setSaveToCloud(false);
     setMultiShareStatus('idle');
     setReceiverCount(0);
     setReceiverProgress(new Map());
@@ -749,6 +794,36 @@ export default function Home() {
                             style={{ 
                               background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
                               left: fastMode ? '16px' : '2px'
+                            }}
+                          />
+                        </button>
+                      </div>
+                    )}
+                    {cloudUpload.cloudEnabled && (
+                      <div className="flex items-center justify-between minimal-border p-2">
+                        <div className="flex items-center gap-2">
+                          <Cloud 
+                            size={12} 
+                            style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }} 
+                          />
+                          <span className="text-[10px]" style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}>
+                            SAVE TO CLOUD
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSaveToCloud(!saveToCloud)}
+                          className="w-8 h-4 rounded-full transition-all relative"
+                          style={{ 
+                            background: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--border))',
+                            boxShadow: saveToCloud ? '0 0 8px hsl(200 80% 55% / 0.5)' : 'none'
+                          }}
+                          data-testid="toggle-save-to-cloud"
+                        >
+                          <div 
+                            className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                            style={{ 
+                              background: saveToCloud ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                              left: saveToCloud ? '16px' : '2px'
                             }}
                           />
                         </button>
@@ -1039,13 +1114,45 @@ export default function Home() {
                 <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
                   {activeFile?.name || `${files.length} files`}
                 </div>
+                {cloudUploadStatus === 'uploading' && (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-center gap-2 text-[10px] mb-2" style={{ color: 'hsl(200 80% 55%)' }}>
+                      <Cloud size={12} className="animate-pulse" />
+                      <span>saving to cloud... {cloudUploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
+                      <div 
+                        className="h-full transition-all duration-200" 
+                        style={{ 
+                          width: `${cloudUploadProgress}%`, 
+                          background: 'hsl(200 80% 55%)' 
+                        }} 
+                      />
+                    </div>
+                  </div>
+                )}
+                {cloudUploadStatus === 'success' && (
+                  <div className="mt-3 flex items-center justify-center gap-2 text-[10px]" style={{ color: 'hsl(var(--accent))' }}>
+                    <Cloud size={12} />
+                    <Check size={10} />
+                    <span>saved to cloud</span>
+                  </div>
+                )}
+                {cloudUploadStatus === 'failed' && (
+                  <div className="mt-3 flex items-center justify-center gap-2 text-[10px]" style={{ color: 'hsl(0 65% 55%)' }}>
+                    <Cloud size={12} />
+                    <X size={10} />
+                    <span>cloud backup failed</span>
+                  </div>
+                )}
               </div>
               <button
                 onClick={resetSender}
-                className="minimal-btn minimal-btn-accent w-full mt-2"
+                disabled={cloudUploadStatus === 'uploading'}
+                className={`minimal-btn w-full mt-2 ${cloudUploadStatus === 'uploading' ? '' : 'minimal-btn-accent'}`}
                 data-testid="button-send-another"
               >
-                send another
+                {cloudUploadStatus === 'uploading' ? 'uploading...' : 'send another'}
               </button>
             </div>
           )}

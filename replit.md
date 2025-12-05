@@ -145,6 +145,39 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 
 ## Recent Updates
 
+### December 5, 2025 - Save to Cloud Feature (Backblaze B2)
+
+**New Feature**
+- Optional "Save to Cloud" toggle that allows uploading files to Backblaze B2 cloud storage as a backup after successful P2P transfer
+- Cloud toggle only visible when B2 credentials are properly configured
+- Uses secure direct browser-to-B2 uploads with server-generated temporary tokens
+- No credentials exposed to the browser - server generates upload URLs with short-lived authorization tokens
+
+**Implementation Details**
+- `server/lib/b2.ts` - B2 service that handles authorization and upload URL generation
+- `client/src/hooks/useCloudUpload.ts` - Frontend hook for direct B2 uploads with progress tracking
+- Cloud status endpoint (`/api/cloud/status`) checks if B2 is enabled
+- Upload URL endpoint (`/api/cloud/upload-url`) generates temporary upload credentials
+
+**Security**
+- B2 credentials stored as environment secrets (B2_APPLICATION_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_ID, B2_BUCKET_NAME)
+- Rate limiting on cloud endpoints (30 requests/min per IP)
+- File size validation (4GB limit)
+- Temporary authorization tokens expire after use
+
+**UI/UX**
+- Toggle appears only when files are selected and B2 is configured
+- Blue color scheme (#38bdf8) distinguishes cloud feature from P2P
+- Progress bar shown during cloud upload after P2P transfer completes
+- Clear success/failure indicators in completion UI
+- Button disabled while cloud upload in progress
+
+**Files Modified**
+- `server/lib/b2.ts` - New B2 service module
+- `server/routes.ts` - Added cloud status and upload URL endpoints
+- `client/src/hooks/useCloudUpload.ts` - New cloud upload hook
+- `client/src/pages/Home.tsx` - Save to Cloud toggle and upload status UI
+
 ### December 5, 2025 - Sender Cancellation Handling Improvements
 
 **Bug Fixes**
