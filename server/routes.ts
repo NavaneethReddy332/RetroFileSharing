@@ -342,18 +342,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "No file provided" });
         }
 
-        console.log(`Uploading file to B2: ${fileName} (${fileBuffer.length} bytes)`);
+        const fileSize = fileBuffer.length;
+        console.log(`Uploading file to B2: ${fileName} (${fileSize} bytes)`);
         
         const result = await b2Service.uploadFile(fileBuffer, fileName, contentType);
         
         // Clear buffer to help garbage collection
         fileBuffer = null;
         
-        if (result.success) {
+        if (result.success && result.fileName) {
+          // Create a permanent cloud upload record
+          const cloudUpload = await storage.createCloudUpload({
+            fileName: fileName,
+            fileSize: fileSize,
+            mimeType: contentType,
+            storageKey: result.fileName,
+            fileId: result.fileId || null,
+          });
+
           res.json({
             success: true,
-            fileName: result.fileName,
+            code: cloudUpload.code,
+            fileName: cloudUpload.fileName,
             fileId: result.fileId,
+            storageKey: result.fileName,
           });
         } else {
           res.status(500).json({ 
@@ -375,6 +387,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to upload file" });
       }
+    }
+  });
+
+  // Get cloud upload info and download URL by permanent code
+  app.get("/api/cloud/:code", async (req, res) => {
+    try {
+      const { code } = req.params;
+      
+      if (!code || code.length !== 8) {
+        return res.status(400).json({ error: "Invalid cloud code format" });
+      }
+
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`cloud-download:${clientIP}`, 30, 60000);
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      const cloudUpload = await storage.getCloudUploadByCode(code.toUpperCase());
+      
+      if (!cloudUpload) {
+        return res.status(404).json({ error: "Cloud file not found" });
+      }
+
+      if (!b2Service.isEnabled()) {
+        return res.status(503).json({ error: "Cloud storage is not configured" });
+      }
+
+      // Get download authorization from B2
+      const downloadAuth = await b2Service.getDownloadAuthorization(
+        cloudUpload.fileId || '',
+        cloudUpload.storageKey,
+        86400 // 24 hours validity
+      );
+
+      if (!downloadAuth) {
+        return res.status(500).json({ error: "Failed to generate download URL" });
+      }
+
+      // Increment download count
+      await storage.incrementCloudDownloadCount(cloudUpload.id);
+
+      res.json({
+        code: cloudUpload.code,
+        fileName: cloudUpload.fileName,
+        fileSize: cloudUpload.fileSize,
+        mimeType: cloudUpload.mimeType,
+        downloadUrl: downloadAuth.downloadUrl,
+        downloadCount: cloudUpload.downloadCount + 1,
+        createdAt: cloudUpload.createdAt,
+      });
+    } catch (error) {
+      console.error("Cloud download lookup error:", error);
+      res.status(500).json({ error: "Failed to retrieve cloud file" });
     }
   });
 
