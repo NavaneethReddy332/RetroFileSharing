@@ -1,7 +1,7 @@
-import { type TransferSession, type InsertTransferSession, transferSessions } from "@shared/schema";
+import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads } from "@shared/schema";
 import { db } from "./db";
 import { eq, lte, and, ne, lt } from "drizzle-orm";
-import { generateSecureCode } from "./lib/security";
+import { generateSecureCode, generateCloudCode } from "./lib/security";
 
 export interface IStorage {
   createTransferSession(session: InsertTransferSession): Promise<TransferSession>;
@@ -13,6 +13,11 @@ export interface IStorage {
   cleanupExpiredSessions(): Promise<void>;
   deleteOldSessions(): Promise<void>;
   healthCheck(): Promise<boolean>;
+  
+  createCloudUpload(upload: Omit<InsertCloudUpload, 'code'>): Promise<CloudUpload>;
+  getCloudUploadByCode(code: string): Promise<CloudUpload | undefined>;
+  incrementCloudDownloadCount(id: number): Promise<void>;
+  deleteCloudUpload(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -143,6 +148,42 @@ export class DatabaseStorage implements IStorage {
       console.error('[HEALTH] Database health check failed:', error);
       return false;
     }
+  }
+
+  async createCloudUpload(upload: Omit<InsertCloudUpload, 'code'>): Promise<CloudUpload> {
+    let code = generateCloudCode();
+    let attempts = 0;
+    
+    while (attempts < 10) {
+      const existing = await db.select().from(cloudUploads).where(eq(cloudUploads.code, code)).limit(1);
+      if (existing.length === 0) break;
+      code = generateCloudCode();
+      attempts++;
+    }
+    
+    const result = await db.insert(cloudUploads).values({
+      ...upload,
+      code,
+    }).returning();
+    return result[0];
+  }
+
+  async getCloudUploadByCode(code: string): Promise<CloudUpload | undefined> {
+    const result = await db.select().from(cloudUploads).where(eq(cloudUploads.code, code)).limit(1);
+    return result[0];
+  }
+
+  async incrementCloudDownloadCount(id: number): Promise<void> {
+    const current = await db.select().from(cloudUploads).where(eq(cloudUploads.id, id)).limit(1);
+    if (current[0]) {
+      await db.update(cloudUploads).set({ 
+        downloadCount: current[0].downloadCount + 1 
+      }).where(eq(cloudUploads.id, id));
+    }
+  }
+
+  async deleteCloudUpload(id: number): Promise<void> {
+    await db.delete(cloudUploads).where(eq(cloudUploads.id, id));
   }
 }
 

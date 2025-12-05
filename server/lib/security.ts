@@ -9,6 +9,17 @@ export function generateSecureCode(): string {
   return code.toString();
 }
 
+export function generateCloudCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  const array = new Uint8Array(8);
+  crypto.getRandomValues(array);
+  for (let i = 0; i < 8; i++) {
+    code += chars[array[i] % chars.length];
+  }
+  return code;
+}
+
 export function generateSessionToken(sessionId: number, code: string): string {
   const payload = `${sessionId}:${code}:${Date.now() + 600000}`;
   const hmac = crypto.createHmac('sha256', SESSION_SECRET);
