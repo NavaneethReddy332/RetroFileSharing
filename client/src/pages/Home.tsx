@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { RetroLayout } from "../components/RetroLayout";
 import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -55,6 +55,7 @@ export default function Home() {
   const [saveToCloud, setSaveToCloud] = useState(false);
   const [cloudUploadProgress, setCloudUploadProgress] = useState(0);
   const [cloudUploadStatus, setCloudUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'failed'>('idle');
+  const [cloudFileName, setCloudFileName] = useState<string>('');
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -171,6 +172,11 @@ export default function Home() {
         return;
       }
       
+      cloudUpload.cancelUpload();
+      setCloudUploadStatus('idle');
+      setCloudUploadProgress(0);
+      setCloudFileName('');
+      
       setFiles(selectedFiles);
       setZipFile(null);
       setMultiShareMode(false);
@@ -207,6 +213,11 @@ export default function Home() {
         addLog(validation.message || 'File validation failed', 'error');
         return;
       }
+      
+      cloudUpload.cancelUpload();
+      setCloudUploadStatus('idle');
+      setCloudUploadProgress(0);
+      setCloudFileName('');
       
       setFiles(droppedFiles);
       setZipFile(null);
@@ -454,11 +465,6 @@ export default function Home() {
             if (!multiShareMode) {
               addLog('transfer verified', 'success');
               setStatus('complete');
-              
-              if (saveToCloudRef.current && fileToUploadRef.current) {
-                addLog('starting cloud backup...', 'system');
-                cloudUpload.uploadToCloud(fileToUploadRef.current);
-              }
             }
             break;
 
@@ -616,6 +622,57 @@ export default function Home() {
     addLog('FAST MODE enabled', 'warn');
   };
 
+  const handleSaveToCloudToggle = () => {
+    if (!saveToCloud) {
+      // Enabling save to cloud - disable other modes
+      setFastMode(false);
+      setMultiShareMode(false);
+      setSaveToCloud(true);
+      addLog('SAVE TO CLOUD enabled', 'system');
+    } else {
+      setSaveToCloud(false);
+      cloudUpload.cancelUpload();
+      setCloudUploadStatus('idle');
+      setCloudUploadProgress(0);
+      setCloudFileName('');
+    }
+  };
+
+  const triggerCloudUpload = useCallback(async (filesToUpload: File[]) => {
+    if (filesToUpload.length === 0) return;
+    
+    cloudUpload.cancelUpload();
+    setCloudUploadStatus('uploading');
+    
+    if (filesToUpload.length === 1) {
+      setCloudFileName(filesToUpload[0].name);
+      cloudUpload.uploadToCloud(filesToUpload[0]);
+    } else {
+      setCloudFileName(`${filesToUpload.length} files.zip`);
+      addLog('creating zip for cloud upload...', 'system');
+      
+      try {
+        const zip = await createZipFile(filesToUpload);
+        if (zip) {
+          setCloudFileName(zip.name);
+          cloudUpload.uploadToCloud(zip);
+        } else {
+          setCloudUploadStatus('failed');
+          addLog('failed to create zip for cloud upload', 'error');
+        }
+      } catch (error) {
+        setCloudUploadStatus('failed');
+        addLog('cloud zip creation error', 'error');
+      }
+    }
+  }, [cloudUpload, addLog]);
+
+  useEffect(() => {
+    if (saveToCloud && files.length > 0 && cloudUploadStatus === 'idle' && cloudUpload.cloudEnabled) {
+      triggerCloudUpload(files);
+    }
+  }, [saveToCloud, files, cloudUploadStatus, triggerCloudUpload, cloudUpload.cloudEnabled]);
+
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
@@ -741,77 +798,34 @@ export default function Home() {
 
                 {files.length > 0 && (
                   <div className="mt-2 flex flex-col gap-2">
-                    <div className="flex items-center justify-between minimal-border p-2">
-                      <div className="flex items-center gap-2">
-                        <Users 
-                          size={12} 
-                          style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }} 
-                        />
-                        <span className="text-[10px]" style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}>
-                          MULTI-SHARE
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setMultiShareMode(!multiShareMode)}
-                        className="w-8 h-4 rounded-full transition-all relative"
-                        style={{ 
-                          background: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--border))',
-                          boxShadow: multiShareMode ? '0 0 8px hsl(var(--accent) / 0.5)' : 'none'
-                        }}
-                        data-testid="toggle-multi-share"
-                      >
-                        <div 
-                          className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                          style={{ 
-                            background: multiShareMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                            left: multiShareMode ? '16px' : '2px'
-                          }}
-                        />
-                      </button>
-                    </div>
-                    {!multiShareMode && (
-                      <div className="flex items-center justify-between minimal-border p-2">
-                        <div className="flex items-center gap-2">
-                          <Zap 
-                            size={12} 
-                            style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
-                          />
-                          <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
-                            FAST MODE
-                          </span>
-                        </div>
-                        <button
-                          onClick={handleFastModeToggle}
-                          className="w-8 h-4 rounded-full transition-all relative"
-                          style={{ 
-                            background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
-                            boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
-                          }}
-                          data-testid="toggle-fast-mode"
-                        >
-                          <div 
-                            className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
-                            style={{ 
-                              background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
-                              left: fastMode ? '16px' : '2px'
-                            }}
-                          />
-                        </button>
-                      </div>
-                    )}
                     {cloudUpload.cloudEnabled && (
-                      <div className="flex items-center justify-between minimal-border p-2">
+                      <div 
+                        className="flex items-center justify-between p-2 rounded transition-all"
+                        style={{ 
+                          border: saveToCloud ? '1px solid hsl(200 80% 55%)' : '1px solid hsl(var(--border))',
+                          background: saveToCloud ? 'hsl(200 80% 55% / 0.1)' : 'transparent',
+                          boxShadow: saveToCloud ? '0 0 12px hsl(200 80% 55% / 0.3)' : 'none'
+                        }}
+                      >
                         <div className="flex items-center gap-2">
                           <Cloud 
-                            size={12} 
+                            size={14} 
                             style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }} 
+                            className={saveToCloud ? 'animate-pulse' : ''}
                           />
-                          <span className="text-[10px]" style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}>
-                            SAVE TO CLOUD
-                          </span>
+                          <div>
+                            <span className="text-[10px] font-medium" style={{ color: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}>
+                              SAVE TO CLOUD
+                            </span>
+                            {saveToCloud && (
+                              <div className="text-[8px]" style={{ color: 'hsl(200 80% 55% / 0.7)' }}>
+                                instant upload + sharing
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <button
-                          onClick={() => setSaveToCloud(!saveToCloud)}
+                          onClick={handleSaveToCloudToggle}
                           className="w-8 h-4 rounded-full transition-all relative"
                           style={{ 
                             background: saveToCloud ? 'hsl(200 80% 55%)' : 'hsl(var(--border))',
@@ -828,6 +842,68 @@ export default function Home() {
                           />
                         </button>
                       </div>
+                    )}
+                    {!saveToCloud && (
+                      <>
+                        <div className="flex items-center justify-between minimal-border p-2">
+                          <div className="flex items-center gap-2">
+                            <Users 
+                              size={12} 
+                              style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }} 
+                            />
+                            <span className="text-[10px]" style={{ color: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))' }}>
+                              MULTI-SHARE
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setMultiShareMode(!multiShareMode)}
+                            className="w-8 h-4 rounded-full transition-all relative"
+                            style={{ 
+                              background: multiShareMode ? 'hsl(var(--accent))' : 'hsl(var(--border))',
+                              boxShadow: multiShareMode ? '0 0 8px hsl(var(--accent) / 0.5)' : 'none'
+                            }}
+                            data-testid="toggle-multi-share"
+                          >
+                            <div 
+                              className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                              style={{ 
+                                background: multiShareMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                                left: multiShareMode ? '16px' : '2px'
+                              }}
+                            />
+                          </button>
+                        </div>
+                        {!multiShareMode && (
+                          <div className="flex items-center justify-between minimal-border p-2">
+                            <div className="flex items-center gap-2">
+                              <Zap 
+                                size={12} 
+                                style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }} 
+                              />
+                              <span className="text-[10px]" style={{ color: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--text-dim))' }}>
+                                FAST MODE
+                              </span>
+                            </div>
+                            <button
+                              onClick={handleFastModeToggle}
+                              className="w-8 h-4 rounded-full transition-all relative"
+                              style={{ 
+                                background: fastMode ? 'hsl(45 100% 50%)' : 'hsl(var(--border))',
+                                boxShadow: fastMode ? '0 0 8px hsl(45 100% 50% / 0.5)' : 'none'
+                              }}
+                              data-testid="toggle-fast-mode"
+                            >
+                              <div 
+                                className="absolute top-0.5 w-3 h-3 rounded-full transition-all"
+                                style={{ 
+                                  background: fastMode ? 'hsl(var(--bg))' : 'hsl(var(--text-dim))',
+                                  left: fastMode ? '16px' : '2px'
+                                }}
+                              />
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -1114,45 +1190,13 @@ export default function Home() {
                 <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
                   {activeFile?.name || `${files.length} files`}
                 </div>
-                {cloudUploadStatus === 'uploading' && (
-                  <div className="mt-3">
-                    <div className="flex items-center justify-center gap-2 text-[10px] mb-2" style={{ color: 'hsl(200 80% 55%)' }}>
-                      <Cloud size={12} className="animate-pulse" />
-                      <span>saving to cloud... {cloudUploadProgress}%</span>
-                    </div>
-                    <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
-                      <div 
-                        className="h-full transition-all duration-200" 
-                        style={{ 
-                          width: `${cloudUploadProgress}%`, 
-                          background: 'hsl(200 80% 55%)' 
-                        }} 
-                      />
-                    </div>
-                  </div>
-                )}
-                {cloudUploadStatus === 'success' && (
-                  <div className="mt-3 flex items-center justify-center gap-2 text-[10px]" style={{ color: 'hsl(var(--accent))' }}>
-                    <Cloud size={12} />
-                    <Check size={10} />
-                    <span>saved to cloud</span>
-                  </div>
-                )}
-                {cloudUploadStatus === 'failed' && (
-                  <div className="mt-3 flex items-center justify-center gap-2 text-[10px]" style={{ color: 'hsl(0 65% 55%)' }}>
-                    <Cloud size={12} />
-                    <X size={10} />
-                    <span>cloud backup failed</span>
-                  </div>
-                )}
               </div>
               <button
                 onClick={resetSender}
-                disabled={cloudUploadStatus === 'uploading'}
-                className={`minimal-btn w-full mt-2 ${cloudUploadStatus === 'uploading' ? '' : 'minimal-btn-accent'}`}
+                className="minimal-btn w-full mt-2 minimal-btn-accent"
                 data-testid="button-send-another"
               >
-                {cloudUploadStatus === 'uploading' ? 'uploading...' : 'send another'}
+                send another
               </button>
             </div>
           )}
@@ -1288,6 +1332,116 @@ export default function Home() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {(cloudUploadStatus === 'uploading' || cloudUploadStatus === 'success' || cloudUploadStatus === 'failed') && (
+        <div 
+          className="fixed bottom-4 left-4 z-40 p-3 rounded"
+          style={{ 
+            background: 'hsl(var(--bg))',
+            border: '1px solid hsl(200 80% 55% / 0.5)',
+            boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)',
+            minWidth: '200px'
+          }}
+          data-testid="cloud-upload-progress-panel"
+        >
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <Cloud 
+                size={14} 
+                style={{ 
+                  color: cloudUploadStatus === 'failed' ? 'hsl(0 65% 55%)' : 'hsl(200 80% 55%)' 
+                }} 
+                className={cloudUploadStatus === 'uploading' ? 'animate-pulse' : ''}
+              />
+              <span className="text-[10px] font-medium" style={{ 
+                color: cloudUploadStatus === 'failed' ? 'hsl(0 65% 55%)' : 'hsl(200 80% 55%)' 
+              }}>
+                {cloudUploadStatus === 'uploading' && 'UPLOADING TO CLOUD'}
+                {cloudUploadStatus === 'success' && 'CLOUD UPLOAD COMPLETE'}
+                {cloudUploadStatus === 'failed' && 'CLOUD UPLOAD FAILED'}
+              </span>
+            </div>
+            {cloudUploadStatus !== 'uploading' && (
+              <button
+                onClick={() => {
+                  setCloudUploadStatus('idle');
+                  setCloudUploadProgress(0);
+                }}
+                className="p-0.5"
+                style={{ color: 'hsl(var(--text-dim))' }}
+                data-testid="button-close-cloud-panel"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          
+          <div className="text-[9px] truncate mb-2" style={{ color: 'hsl(var(--text-secondary))' }}>
+            {cloudFileName || (files.length === 1 ? files[0]?.name : `${files.length} files`)}
+          </div>
+
+          {cloudUploadStatus === 'uploading' && (
+            <>
+              <div className="w-full h-1.5 rounded-full overflow-hidden mb-1" style={{ background: 'hsl(var(--border))' }}>
+                <div 
+                  className="h-full transition-all duration-200" 
+                  style={{ 
+                    width: `${cloudUploadProgress}%`, 
+                    background: 'hsl(200 80% 55%)',
+                    boxShadow: '0 0 8px hsl(200 80% 55% / 0.5)'
+                  }} 
+                />
+              </div>
+              <div className="flex justify-between text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                <span>{cloudUploadProgress}%</span>
+                <button
+                  onClick={() => {
+                    cloudUpload.cancelUpload();
+                    setCloudUploadStatus('idle');
+                    setCloudUploadProgress(0);
+                    setSaveToCloud(false);
+                  }}
+                  className="flex items-center gap-1"
+                  style={{ color: 'hsl(0 65% 55%)' }}
+                  data-testid="button-cancel-cloud-upload"
+                >
+                  <X size={10} />
+                  cancel
+                </button>
+              </div>
+            </>
+          )}
+
+          {cloudUploadStatus === 'success' && (
+            <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(var(--accent))' }}>
+              <Check size={10} />
+              <span>file is now available in cloud</span>
+            </div>
+          )}
+
+          {cloudUploadStatus === 'failed' && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(0 65% 55%)' }}>
+                <X size={10} />
+                <span>upload failed</span>
+              </div>
+              <button
+                onClick={() => {
+                  if (files.length > 0) {
+                    setCloudUploadStatus('idle');
+                    setCloudUploadProgress(0);
+                  }
+                }}
+                className="text-[9px]"
+                style={{ color: 'hsl(200 80% 55%)' }}
+                data-testid="button-retry-cloud-upload"
+              >
+                retry
+              </button>
+            </div>
+          )}
         </div>
       )}
     </RetroLayout>
