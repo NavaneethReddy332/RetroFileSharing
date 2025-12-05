@@ -18,6 +18,7 @@ class B2Service {
   private authorized: boolean = false;
   private authorizationData: any = null;
   private uploadUrlCache: { url: string; token: string; expiry: number } | null = null;
+  private corsConfigured: boolean = false;
 
   constructor() {
     this.initializeB2();
@@ -47,11 +48,73 @@ class B2Service {
       const response = await this.b2.authorize();
       this.authorizationData = response.data;
       this.authorized = true;
+      
+      // Configure CORS after authorization
+      if (!this.corsConfigured) {
+        await this.configureCors();
+      }
+      
       return true;
     } catch (error) {
       console.error('B2 authorization failed:', error);
       this.authorized = false;
       return false;
+    }
+  }
+
+  private async configureCors(): Promise<void> {
+    if (!this.b2 || !this.authorized) {
+      return;
+    }
+
+    try {
+      const bucketId = process.env.B2_BUCKET_ID;
+      const bucketName = process.env.B2_BUCKET_NAME;
+      
+      if (!bucketId || !bucketName) {
+        console.log('B2 bucket not configured - skipping CORS setup');
+        return;
+      }
+
+      // Configure CORS rules to allow browser uploads from any origin
+      const corsRules = [
+        {
+          corsRuleName: 'allowBrowserUploads',
+          allowedOrigins: ['*'],
+          allowedOperations: ['b2_upload_file', 'b2_download_file_by_name', 'b2_download_file_by_id'],
+          allowedHeaders: [
+            'Authorization',
+            'Content-Type',
+            'Content-Length',
+            'X-Bz-File-Name',
+            'X-Bz-Content-Sha1',
+            'X-Bz-Info-*',
+            'Range'
+          ],
+          exposeHeaders: [
+            'X-Bz-File-Name',
+            'X-Bz-File-Id',
+            'X-Bz-Content-Sha1',
+            'X-Bz-Upload-Timestamp',
+            'Content-Length',
+            'Content-Type'
+          ],
+          maxAgeSeconds: 86400
+        }
+      ];
+
+      // Use type assertion since the B2 types don't include corsRules but the API supports it
+      await (this.b2 as any).updateBucket({
+        bucketId,
+        bucketType: 'allPrivate',
+        corsRules
+      });
+
+      this.corsConfigured = true;
+      console.log('B2 CORS rules configured successfully');
+    } catch (error: any) {
+      // Log but don't fail - CORS might already be configured or we might not have permission
+      console.error('Failed to configure B2 CORS (may already be configured):', error.message || error);
     }
   }
 
@@ -61,6 +124,26 @@ class B2Service {
            !!process.env.B2_APPLICATION_KEY &&
            !!process.env.B2_BUCKET_ID &&
            !!process.env.B2_BUCKET_NAME;
+  }
+
+  async ensureCorsConfigured(): Promise<boolean> {
+    if (this.corsConfigured) {
+      return true;
+    }
+
+    if (!this.authorized) {
+      const success = await this.authorize();
+      if (!success) {
+        return false;
+      }
+    }
+
+    await this.configureCors();
+    return this.corsConfigured;
+  }
+
+  isCorsConfigured(): boolean {
+    return this.corsConfigured;
   }
 
   async getUploadUrl(fileName: string): Promise<UploadUrlResponse | null> {

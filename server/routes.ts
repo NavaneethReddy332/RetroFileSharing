@@ -180,9 +180,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/cloud/status", async (_req, res) => {
+    // Ensure CORS is configured when checking status
+    if (b2Service.isEnabled()) {
+      await b2Service.ensureCorsConfigured();
+    }
+    
     res.json({ 
       enabled: b2Service.isEnabled(),
-      provider: 'backblaze-b2'
+      provider: 'backblaze-b2',
+      corsConfigured: b2Service.isCorsConfigured()
     });
   });
 
@@ -201,6 +207,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!b2Service.isEnabled()) {
         return res.status(503).json({ error: "Cloud storage is not configured" });
       }
+
+      // Ensure CORS is configured for direct browser uploads
+      await b2Service.ensureCorsConfigured();
 
       const { fileName, contentType, fileSize } = req.body;
 
