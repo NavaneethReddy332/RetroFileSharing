@@ -45,6 +45,12 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 - **Cloud Storage (Optional)**: Backblaze B2 - For optional "Save to Cloud" feature.
     - **Upload Method**: Server-proxied uploads (files sent to server which uploads to B2). This approach was chosen because B2's upload endpoints do not support CORS for direct browser uploads.
     - **Size Limit**: 500MB max for cloud uploads (larger files should use P2P transfer).
+    - **UI Behavior**: When "Save to Cloud" is enabled:
+        - Toggle is highlighted with glowing border and animated cloud icon
+        - Fast Mode and Multi-Share options are hidden (disabled)
+        - Upload starts immediately when files are selected
+        - Progress shown in floating bottom-left panel with cancel/retry options
+        - Supports multi-file uploads (auto-zipped before upload)
     - Environment variables: `B2_APPLICATION_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_ID`, `B2_BUCKET_NAME`
 - **Replit Platform Integration**:
     - `@replit/vite-plugin-runtime-error-modal`
