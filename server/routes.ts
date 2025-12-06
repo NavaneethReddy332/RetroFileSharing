@@ -371,6 +371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 fileSize: fileSize,
                 mimeType: contentType,
                 transferType: 'cloud_upload',
+                direction: 'sent',
                 code: cloudUpload.code,
               });
             } catch (err) {
@@ -461,6 +462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fileSize: cloudUpload.fileSize,
             mimeType: cloudUpload.mimeType,
             transferType: 'cloud_download',
+            direction: 'received',
             code: cloudUpload.code,
           });
         } catch (err) {
