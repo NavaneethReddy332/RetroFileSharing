@@ -1,7 +1,11 @@
 import { type Server } from "node:http";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import MemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
+
+const MemoryStoreSession = MemoryStore(session);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -28,6 +32,26 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false, limit: '1100mb' }));
+
+app.use(session({
+  store: new MemoryStoreSession({
+    checkPeriod: 86400000
+  }),
+  secret: process.env.SESSION_SECRET || 'retro-send-session-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  }
+}));
+
+declare module 'express-session' {
+  interface SessionData {
+    userId?: number;
+  }
+}
 
 app.use((req, res, next) => {
   const start = Date.now();

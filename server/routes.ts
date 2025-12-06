@@ -7,6 +7,7 @@ import { generateSecureCode, generateSessionToken, verifySessionToken, checkRate
 import { b2Service } from "./lib/b2";
 import { z } from "zod";
 import Busboy from "busboy";
+import bcrypt from "bcrypt";
 
 interface ReceiverInfo {
   ws: WebSocket;
@@ -360,6 +361,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fileId: result.fileId || null,
           });
 
+          // Record file in user's history if logged in
+          const userId = req.session.userId;
+          if (userId) {
+            try {
+              await storage.createUserFile({
+                userId,
+                fileName: fileName,
+                fileSize: fileSize,
+                mimeType: contentType,
+                transferType: 'cloud_upload',
+                code: cloudUpload.code,
+              });
+            } catch (err) {
+              console.error("Failed to record user file:", err);
+            }
+          }
+
           res.json({
             success: true,
             code: cloudUpload.code,
@@ -433,6 +451,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Increment download count
       await storage.incrementCloudDownloadCount(cloudUpload.id);
 
+      // Record download in user's history if logged in
+      const userId = req.session.userId;
+      if (userId) {
+        try {
+          await storage.createUserFile({
+            userId,
+            fileName: cloudUpload.fileName,
+            fileSize: cloudUpload.fileSize,
+            mimeType: cloudUpload.mimeType,
+            transferType: 'cloud_download',
+            code: cloudUpload.code,
+          });
+        } catch (err) {
+          console.error("Failed to record user file download:", err);
+        }
+      }
+
       res.json({
         code: cloudUpload.code,
         fileName: cloudUpload.fileName,
@@ -445,6 +480,173 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Cloud download lookup error:", error);
       res.status(500).json({ error: "Failed to retrieve cloud file" });
+    }
+  });
+
+  const registerSchema = z.object({
+    username: z.string().min(3).max(50).regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
+    email: z.string().email(),
+    password: z.string().min(6).max(100),
+  });
+
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`auth:${clientIP}`, 10, 60000);
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      const parseResult = registerSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data",
+          details: parseResult.error.errors.map(e => e.message)
+        });
+      }
+
+      const { username, email, password } = parseResult.data;
+
+      // Normalize case before checking for duplicates
+      const normalizedEmail = email.toLowerCase();
+      const normalizedUsername = username.toLowerCase();
+
+      const existingEmail = await storage.getUserByEmail(normalizedEmail);
+      if (existingEmail) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      const existingUsername = await storage.getUserByUsername(normalizedUsername);
+      if (existingUsername) {
+        return res.status(400).json({ error: "Username already taken" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      const user = await storage.createUser({
+        username: normalizedUsername,
+        email: normalizedEmail,
+        passwordHash,
+      });
+
+      req.session.userId = user.id;
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ error: "Failed to register user" });
+    }
+  });
+
+  const loginSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`auth:${clientIP}`, 10, 60000);
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      const parseResult = loginSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data",
+          details: parseResult.error.errors.map(e => e.message)
+        });
+      }
+
+      const { email, password } = parseResult.data;
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const validPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!validPassword) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      req.session.userId = user.id;
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Failed to login" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error("Logout error:", err);
+        return res.status(500).json({ error: "Failed to logout" });
+      }
+      res.clearCookie('connect.sid');
+      res.json({ success: true });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        req.session.destroy(() => {});
+        return res.status(401).json({ error: "User not found" });
+      }
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      });
+    } catch (error) {
+      console.error("Auth check error:", error);
+      res.status(500).json({ error: "Failed to check authentication" });
+    }
+  });
+
+  app.get("/api/user/files", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const files = await storage.getUserFiles(userId, 100);
+      res.json(files);
+    } catch (error) {
+      console.error("User files error:", error);
+      res.status(500).json({ error: "Failed to retrieve user files" });
     }
   });
 

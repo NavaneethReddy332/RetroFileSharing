@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X, ChevronLeft, User, Users, Zap, Code } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft, User, Users, Zap, Code, LogIn, LogOut, FolderOpen } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { AuthModal } from './AuthModal';
+import { LoginReminder } from './LoginReminder';
 
 interface RetroLayoutProps {
   children: React.ReactNode;
@@ -10,9 +13,13 @@ export function RetroLayout({ children }: RetroLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isHoveringTrigger, setIsHoveringTrigger] = useState(false);
   const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [location] = useLocation();
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
 
   const clearCloseTimeout = useCallback(() => {
     if (closeTimeoutRef.current) {
@@ -44,18 +51,34 @@ export function RetroLayout({ children }: RetroLayoutProps) {
       if (e.key === 'Escape' && isSidebarOpen) {
         setIsSidebarOpen(false);
       }
+      if (e.key === 'Escape' && isUserMenuOpen) {
+        setIsUserMenuOpen(false);
+      }
       if (e.key === ']' && e.ctrlKey) {
         e.preventDefault();
         setIsSidebarOpen(prev => !prev);
       }
     };
 
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
     document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
       clearCloseTimeout();
     };
-  }, [isSidebarOpen, clearCloseTimeout]);
+  }, [isSidebarOpen, isUserMenuOpen, clearCloseTimeout]);
+
+  const handleLogout = async () => {
+    setIsUserMenuOpen(false);
+    await logout();
+  };
 
   return (
     <div className="h-screen w-full overflow-hidden" style={{ backgroundColor: 'hsl(var(--surface))' }}>
@@ -87,6 +110,71 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             >
               RECEIVE
             </Link>
+            
+            {!isLoading && (
+              <>
+                {isAuthenticated && user ? (
+                  <div className="relative" ref={userMenuRef}>
+                    <button
+                      onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                      className="flex items-center gap-2 px-2 py-1 text-xs transition-colors"
+                      style={{ 
+                        color: 'hsl(var(--accent))',
+                        border: '1px solid hsl(var(--border-subtle))',
+                      }}
+                      data-testid="button-user-menu"
+                    >
+                      <User size={12} />
+                      <span className="uppercase tracking-wider">{user.username}</span>
+                    </button>
+                    
+                    {isUserMenuOpen && (
+                      <div 
+                        className="absolute right-0 top-full mt-1 min-w-[140px] py-1 z-50"
+                        style={{ 
+                          backgroundColor: 'hsl(var(--surface))',
+                          border: '1px solid hsl(var(--border-subtle))',
+                        }}
+                      >
+                        <Link
+                          href="/your-files"
+                          className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-wider no-underline transition-colors"
+                          style={{ color: 'hsl(var(--text-secondary))' }}
+                          onClick={() => setIsUserMenuOpen(false)}
+                          data-testid="link-your-files"
+                        >
+                          <FolderOpen size={12} />
+                          YOUR FILES
+                        </Link>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[10px] tracking-wider transition-colors text-left"
+                          style={{ color: 'hsl(var(--text-dim))' }}
+                          data-testid="button-logout"
+                        >
+                          <LogOut size={12} />
+                          LOGOUT
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-colors"
+                    style={{ 
+                      color: 'hsl(var(--text-dim))',
+                      border: '1px solid hsl(var(--border-subtle))',
+                    }}
+                    data-testid="button-login"
+                  >
+                    <LogIn size={12} />
+                    LOGIN
+                  </button>
+                )}
+              </>
+            )}
+
             <button
               onClick={() => setIsSidebarOpen(prev => !prev)}
               className="ml-2 p-1 transition-colors"
@@ -317,6 +405,9 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </div>
         </div>
       </div>
+
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <LoginReminder onLoginClick={() => setIsAuthModalOpen(true)} />
     </div>
   );
 }
