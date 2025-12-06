@@ -63,6 +63,12 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
   const startTimeRef = useRef<number>(0);
   const totalBytesRef = useRef<number>(0);
   const hasCalculatedStats = useRef(false);
+  const currentSpeedRef = useRef<number>(0);
+
+  // Keep ref updated with latest speed value
+  useEffect(() => {
+    currentSpeedRef.current = currentSpeed;
+  }, [currentSpeed]);
 
   useEffect(() => {
     if (isTransferring && !startTimeRef.current) {
@@ -78,19 +84,20 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
 
     const interval = setInterval(() => {
       const now = Date.now();
+      const speed = currentSpeedRef.current;
       setSpeedHistory(prev => {
-        const newPoint = { time: now, speed: currentSpeed };
+        const newPoint = { time: now, speed };
         const updated = [...prev, newPoint].slice(-MAX_DATA_POINTS);
         return updated;
       });
       
-      if (currentSpeed > 0) {
-        totalBytesRef.current += currentSpeed * (UPDATE_INTERVAL / 1000);
+      if (speed > 0) {
+        totalBytesRef.current += speed * (UPDATE_INTERVAL / 1000);
       }
     }, UPDATE_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [isTransferring, currentSpeed]);
+  }, [isTransferring]);
 
   useEffect(() => {
     if (isComplete && !hasCalculatedStats.current && speedHistory.length > 0) {
