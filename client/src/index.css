@@ -246,4 +246,16 @@
   .animate-blink {
     animation: blink 1s step-end infinite;
   }
+
+  /* Logo plane floating animation */
+  @keyframes float {
+    0% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-4px) rotate(1deg); }
+    100% { transform: translateY(0px) rotate(0deg); }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+    transform-origin: center;
+  }
 }

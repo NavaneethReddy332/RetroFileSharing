@@ -86,13 +86,39 @@ export function RetroLayout({ children }: RetroLayoutProps) {
       <div className="h-full flex flex-col">
         {/* Minimal header */}
         <header className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
-          <Link href="/" className="no-underline">
-            <span 
-              className="text-sm tracking-[0.3em] font-medium glow-text"
-              style={{ color: 'hsl(var(--accent))' }}
-            >
-              RETRO SEND
-            </span>
+          <Link href="/" className="no-underline flex items-center">
+            <svg width="150" height="40" viewBox="0 0 300 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="aeroGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style={{ stopColor: '#10FF88', stopOpacity: 1 }} />
+                  <stop offset="100%" style={{ stopColor: '#00E5FF', stopOpacity: 1 }} />
+                </linearGradient>
+                <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style={{ stopColor: '#0F5132', stopOpacity: 1 }} />
+                  <stop offset="100%" style={{ stopColor: '#064C4B', stopOpacity: 1 }} />
+                </linearGradient>
+              </defs>
+              <g>
+                <g transform="translate(10, 10)">
+                  <path 
+                    className="animate-float" 
+                    d="M10 40 L 60 15 L 35 55 L 30 40 L 10 40 Z"
+                    fill="url(#aeroGradient)" 
+                    stroke="white" 
+                    strokeWidth="2" 
+                    strokeLinejoin="round"
+                  />
+                  <path 
+                    className="animate-float" 
+                    d="M30 40 L 35 55 L 60 15"
+                    fill="#00E5FF" 
+                    style={{ mixBlendMode: 'multiply', opacity: 0.3 }} 
+                  />
+                </g>
+                <text x="80" y="52" style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: '38px', fill: 'url(#textGradient)' }}>Aero</text>
+                <text x="170" y="52" style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 400, fontSize: '38px', fill: '#0BAF87' }}>Send</text>
+              </g>
+            </svg>
           </Link>
           <div className="flex items-center gap-4">
             <Link 
