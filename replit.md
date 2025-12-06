@@ -1,7 +1,7 @@
-# RETRO SEND - P2P File Transfer Application
+# AeroSend - P2P File Transfer Application
 
 ## Overview
-RETRO SEND is a peer-to-peer file transfer web application enabling direct, real-time file transfers between users. It generates a 6-digit code for senders to initiate transfers, which receivers use to connect and receive files via WebSocket, bypassing cloud storage. The application features a minimal dark theme with a cyan accent and glow effects. The business vision is to provide a cost-effective, private, and fast file transfer solution, eliminating the need for intermediaries.
+AeroSend is a peer-to-peer file transfer web application enabling direct, real-time file transfers between users. It generates a 6-digit code for senders to initiate transfers, which receivers use to connect and receive files via WebSocket, bypassing cloud storage. The application features a minimal dark theme with a cyan accent and glow effects. The business vision is to provide a cost-effective, private, and fast file transfer solution, eliminating the need for intermediaries.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.

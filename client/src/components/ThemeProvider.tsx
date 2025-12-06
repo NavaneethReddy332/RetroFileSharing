@@ -12,7 +12,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     // Check localStorage first
-    const stored = localStorage.getItem("retrosend-theme");
+    const stored = localStorage.getItem("aerosend-theme");
     if (stored === "light" || stored === "dark") {
       return stored;
     }
@@ -30,7 +30,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     
     // Persist to localStorage
-    localStorage.setItem("retrosend-theme", theme);
+    localStorage.setItem("aerosend-theme", theme);
   }, [theme]);
 
   const toggleTheme = () => {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { RetroLayout } from '@/components/RetroLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Redirect } from 'wouter';
@@ -280,11 +280,36 @@ function CloudFileModal({ file, onClose }: CloudFileModalProps) {
 export default function YourFiles() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [selectedFile, setSelectedFile] = useState<UserFile | null>(null);
+  const [highlightStyle, setHighlightStyle] = useState<{
+    top: number;
+    height: number;
+    opacity: number;
+  }>({ top: 0, height: 0, opacity: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: files, isLoading } = useQuery<UserFile[]>({
     queryKey: ['/api/user/files'],
     enabled: isAuthenticated,
   });
+
+  const handleMouseEnter = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+
+    setHighlightStyle({
+      top: targetRect.top - containerRect.top,
+      height: targetRect.height,
+      opacity: 1,
+    });
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setHighlightStyle(prev => ({ ...prev, opacity: 0 }));
+  }, []);
 
   if (authLoading) {
     return (
@@ -324,14 +349,33 @@ export default function YourFiles() {
             <Loader2 className="animate-spin" size={20} style={{ color: 'hsl(var(--accent))' }} />
           </div>
         ) : files && files.length > 0 ? (
-          <div className="space-y-2">
+          <div 
+            ref={containerRef}
+            className="relative space-y-2"
+            onMouseLeave={handleMouseLeave}
+          >
+            <div
+              className="absolute left-0 right-0 pointer-events-none"
+              style={{
+                top: highlightStyle.top,
+                height: highlightStyle.height,
+                opacity: highlightStyle.opacity,
+                backgroundColor: 'hsl(var(--accent) / 0.08)',
+                borderLeft: '2px solid hsl(var(--accent))',
+                transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                zIndex: 0,
+              }}
+            />
             {files.map((file) => (
               <div
                 key={file.id}
-                className={`flex items-center gap-4 p-3 ${isCloudFile(file.transferType) && file.code ? 'cursor-pointer hover-elevate' : ''}`}
+                className={`relative flex items-center gap-4 p-3 ${isCloudFile(file.transferType) && file.code ? 'cursor-pointer' : ''}`}
                 style={{ 
                   border: '1px solid hsl(var(--border-subtle))',
+                  zIndex: 1,
+                  backgroundColor: 'transparent',
                 }}
+                onMouseEnter={handleMouseEnter}
                 onClick={() => {
                   if (isCloudFile(file.transferType) && file.code) {
                     setSelectedFile(file);

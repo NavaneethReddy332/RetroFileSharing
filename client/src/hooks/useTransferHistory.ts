@@ -12,7 +12,7 @@ export interface TransferRecord {
   avgSpeed?: number;
 }
 
-const STORAGE_KEY = 'retrosend_transfer_history';
+const STORAGE_KEY = 'aerosend_transfer_history';
 const MAX_RECORDS = 50;
 
 export function useTransferHistory() {

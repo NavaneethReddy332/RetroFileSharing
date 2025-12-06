@@ -366,7 +366,7 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>APP INFO</span>
             </div>
             <div className="text-[9px] pl-4 leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
-              RETRO SEND is a peer-to-peer file transfer application with a retro terminal aesthetic. Transfer files directly between devices without storing data on servers.
+              AeroSend is a peer-to-peer file transfer application. Transfer files directly between devices without storing data on servers.
             </div>
           </div>
 
