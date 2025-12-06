@@ -52,6 +52,7 @@
     "@types/jszip": "^3.4.0",
     "@types/memoizee": "^0.4.12",
     "@types/multer": "^2.0.0",
+    "@types/pg": "^8.15.6",
     "archiver": "^7.0.1",
     "backblaze-b2": "^1.7.1",
     "bcrypt": "^6.0.0",
