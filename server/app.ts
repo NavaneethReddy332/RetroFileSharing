@@ -20,6 +20,12 @@ export function log(message: string, source = "express") {
 
 export const app = express();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
@@ -40,10 +46,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'retro-send-session-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
+  name: 'retrosend.sid',
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: isProduction ? 'none' : 'lax'
   }
 }));
 

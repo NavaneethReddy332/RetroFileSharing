@@ -20,10 +20,20 @@ TURSO_DATABASE_URL=libsql://your-database.turso.io
 TURSO_AUTH_TOKEN=your_turso_auth_token
 ```
 
-### 3. Session Secret (REQUIRED for security)
+### 3. Session Secret (REQUIRED for security and authentication)
 ```
 SESSION_SECRET=your_random_secret_key_here
 ```
+
+**IMPORTANT:** Generate a strong random secret (at least 32 characters). You can generate one using:
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Without SESSION_SECRET properly configured, users will experience:
+- 401 Unauthorized errors on `/api/user/files`
+- Auto-login failures
+- Session not persisting between requests
 
 ### 4. Node Environment
 ```
@@ -56,6 +66,19 @@ After setting the Turso credentials:
 2. Get your database URL and auth token from the Turso dashboard
 3. Add them as environment variables on Render
 4. The schema will be synced automatically
+
+## Troubleshooting 401 Unauthorized Errors
+
+If you're getting 401 errors on `/api/user/files` or `/api/auth/me`:
+
+1. **Ensure SESSION_SECRET is set** - This is the most common cause
+2. **Ensure NODE_ENV=production is set** - Required for proper cookie handling
+3. **Redeploy after code updates** - The session configuration has been updated to:
+   - Trust Render's reverse proxy (`trust proxy`)
+   - Use proper cookie SameSite settings (`sameSite: 'none'`)
+   - Use secure cookies in production
+
+After deploying the latest code and setting environment variables, authentication should work properly.
 
 ## Troubleshooting 502 Errors
 
