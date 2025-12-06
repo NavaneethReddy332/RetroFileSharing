@@ -37,7 +37,7 @@ export function LoginReminder({ onLoginClick }: LoginReminderProps) {
 
   return (
     <div 
-      className="fixed bottom-4 right-4 z-50 max-w-xs animate-in slide-in-from-right-5 fade-in duration-300"
+      className="fixed bottom-4 left-4 z-50 max-w-xs animate-in slide-in-from-left-5 fade-in duration-300"
       style={{ 
         backgroundColor: 'hsl(var(--surface))',
         border: '1px solid hsl(var(--border-subtle))',

@@ -19,9 +19,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_STORAGE_KEY = 'retro_send_auth_user';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
+
+  const saveUserToStorage = (userData: User | null) => {
+    try {
+      if (userData) {
+        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+      } else {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn('Failed to save auth state to localStorage');
+    }
+  };
 
   const checkAuth = useCallback(async () => {
     try {
@@ -31,11 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+        saveUserToStorage(userData);
       } else {
         setUser(null);
+        saveUserToStorage(null);
       }
     } catch (error) {
       setUser(null);
+      saveUserToStorage(null);
     } finally {
       setIsLoading(false);
     }
@@ -49,17 +73,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await apiRequest('POST', '/api/auth/login', { email, password });
     const userData = await response.json();
     setUser(userData);
+    saveUserToStorage(userData);
   };
 
   const register = async (username: string, email: string, password: string) => {
     const response = await apiRequest('POST', '/api/auth/register', { username, email, password });
     const userData = await response.json();
     setUser(userData);
+    saveUserToStorage(userData);
   };
 
   const logout = async () => {
     await apiRequest('POST', '/api/auth/logout', {});
     setUser(null);
+    saveUserToStorage(null);
   };
 
   return (

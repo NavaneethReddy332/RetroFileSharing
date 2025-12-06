@@ -29,6 +29,9 @@ UI preference: Clean retro theme without terminal, video, or marquee sections.
 - **ORM**: Drizzle ORM configured for Turso.
 - **Schema**: `Transfer Sessions` table includes `id`, `code`, `file_name`, `file_size`, `mime_type`, `status`, `created_at`, `expires_at`, `completed_at`.
 
+> **IMPORTANT: DO NOT CHANGE THE DATABASE**
+> This project uses **Turso (LibSQL/SQLite)** - NOT PostgreSQL. Do not attempt to convert or migrate to PostgreSQL or any other database. The Turso configuration is intentional and must be preserved. Environment variables: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
+
 ### API Structure
 - **Endpoints**:
     - `POST /api/session`: Creates new session, returns 6-digit code.
