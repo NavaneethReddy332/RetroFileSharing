@@ -640,6 +640,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/account/profile", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { username, email } = req.body;
+      
+      if (!username || !email) {
+        return res.status(400).json({ error: "Username and email are required" });
+      }
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername && existingUsername.id !== userId) {
+        return res.status(400).json({ error: "Username already in use" });
+      }
+
+      await storage.updateUser(userId, { username, email });
+      
+      res.json({ success: true, username, email });
+    } catch (error) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  app.post("/api/account/change-password", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Current and new password are required" });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const validPassword = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!validPassword) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      await storage.updateUserPassword(userId, newPasswordHash);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Password change error:", error);
+      res.status(500).json({ error: "Failed to change password" });
+    }
+  });
+
+  app.get("/api/account/storage", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const files = await storage.getUserFiles(userId, 1000);
+      const used = files.reduce((acc, f) => acc + f.fileSize, 0);
+      const total = 500 * 1024 * 1024;
+      
+      res.json({
+        used,
+        total,
+        fileCount: files.length,
+      });
+    } catch (error) {
+      console.error("Storage usage error:", error);
+      res.status(500).json({ error: "Failed to get storage usage" });
+    }
+  });
+
+  app.get("/api/account/stats", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const user = await storage.getUserById(userId);
+      const files = await storage.getUserFiles(userId, 1000);
+      
+      const totalTransfers = files.length;
+      const totalBytesTransferred = files.reduce((acc, f) => acc + f.fileSize, 0);
+      
+      res.json({
+        totalTransfers,
+        totalBytesTransferred,
+        joinedDate: user?.createdAt || new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Account stats error:", error);
+      res.status(500).json({ error: "Failed to get account stats" });
+    }
+  });
+
+  app.get("/api/account/sessions", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      res.json([]);
+    } catch (error) {
+      console.error("Sessions error:", error);
+      res.status(500).json({ error: "Failed to get sessions" });
+    }
+  });
+
+  app.delete("/api/account/sessions/:sessionId", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Session revoke error:", error);
+      res.status(500).json({ error: "Failed to revoke session" });
+    }
+  });
+
   app.get("/api/user/files", async (req, res) => {
     try {
       const userId = req.session.userId;

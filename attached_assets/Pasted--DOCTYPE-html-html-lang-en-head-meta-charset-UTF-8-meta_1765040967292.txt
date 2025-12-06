@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus Dashboard</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+    :root {
+        --bg-deep: #030303;
+        --bg-panel: #0a0a0a;
+        --border-subtle: #1a1a1a;
+        --text-main: #ededed;
+        --text-muted: #666;
+        --cyan: #06b6d4;
+        --cyan-glow: rgba(6, 182, 212, 0.4);
+        --cyan-dim: rgba(6, 182, 212, 0.05);
+        --radius: 8px;
+        --easing: cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+    body {
+        background-color: var(--bg-deep);
+        color: var(--text-main);
+        height: 100vh;
+        display: flex;
+        font-size: 13px;
+        overflow: hidden;
+    }
+
+    /* --- "LIVING" BACKGROUND --- */
+    body::before {
+        content: "";
+        position: absolute;
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(6,182,212,0.06) 0%, transparent 70%);
+        top: -200px;
+        left: -200px;
+        filter: blur(80px);
+        animation: breath 10s infinite alternate;
+        z-index: -1;
+        pointer-events: none;
+    }
+
+    @keyframes breath {
+        0% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+        100% { transform: translate(50px, 50px) scale(1.1); opacity: 0.8; }
+    }
+
+    /* --- SIDEBAR --- */
+    .sidebar {
+        width: 240px;
+        padding: 30px 15px;
+        border-right: 1px solid var(--border-subtle);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        z-index: 10;
+        background: rgba(3, 3, 3, 0.8);
+        backdrop-filter: blur(10px);
+    }
+
+    .brand {
+        padding: 0 15px;
+        margin-bottom: 40px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        font-size: 11px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .brand i { color: var(--cyan); box-shadow: 0 0 15px var(--cyan-glow); border-radius: 50%; }
+
+    /* The Sliding Cursor Highlight */
+    .nav-container { position: relative; display: flex; flex-direction: column; gap: 5px; }
+    
+    .nav-highlight {
+        position: absolute;
+        height: 40px; /* Default, will resize via JS */
+        width: 100%;
+        background: var(--cyan-dim);
+        border-right: 2px solid var(--cyan);
+        border-radius: var(--radius);
+        transition: all 0.4s var(--easing);
+        pointer-events: none;
+        opacity: 0; /* Hidden initially */
+        box-shadow: 0 0 20px rgba(6, 182, 212, 0.05);
+    }
+
+    .nav-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        padding: 12px 15px;
+        text-align: left;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transition: color 0.3s;
+        position: relative;
+        z-index: 2;
+    }
+
+    .nav-btn i { width: 18px; text-align: center; transition: 0.3s; }
+    
+    .nav-btn:hover, .nav-btn.active { color: var(--text-main); }
+    .nav-btn.active i { color: var(--cyan); text-shadow: 0 0 10px var(--cyan-glow); }
+
+    /* --- CONTENT AREA --- */
+    .content {
+        flex: 1;
+        padding: 50px 80px;
+        overflow-y: auto;
+        position: relative;
+    }
+
+    /* Scrollbar Styling */
+    .content::-webkit-scrollbar { width: 6px; }
+    .content::-webkit-scrollbar-track { background: transparent; }
+    .content::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+    .content::-webkit-scrollbar-thumb:hover { background: #333; }
+
+    .page { 
+        display: none; 
+        max-width: 600px;
+        animation: pageEntry 0.5s var(--easing) forwards;
+    }
+    .page.active { display: block; }
+
+    @keyframes pageEntry {
+        0% { opacity: 0; transform: translateY(15px) scale(0.98); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 5px; letter-spacing: -0.5px; }
+    p.desc { color: var(--text-muted); font-size: 12px; margin-bottom: 35px; }
+
+    /* --- CARDS & WIDGETS --- */
+    .card {
+        background: var(--bg-panel);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius);
+        padding: 25px;
+        margin-bottom: 20px;
+        position: relative;
+        overflow: hidden;
+        transition: border-color 0.3s;
+    }
+
+    .card:hover { border-color: #333; }
+
+    .card h3 { font-size: 13px; font-weight: 600; margin-bottom: 20px; color: var(--text-main); display: flex; justify-content: space-between; }
+    .card h3 span { color: var(--text-muted); font-size: 11px; font-weight: 400; border: 1px solid #333; padding: 2px 8px; border-radius: 100px; }
+
+    /* Inputs */
+    .input-group { margin-bottom: 20px; position: relative; }
+    .input-group label {
+        display: block; font-size: 11px; color: var(--text-muted);
+        text-transform: uppercase; margin-bottom: 8px; font-weight: 600;
+    }
+    
+    input[type="text"], input[type="email"], textarea {
+        width: 100%;
+        background: #000;
+        border: 1px solid var(--border-subtle);
+        color: white;
+        padding: 12px;
+        border-radius: var(--radius);
+        outline: none;
+        font-size: 13px;
+        transition: 0.3s;
+    }
+
+    input:focus, textarea:focus {
+        border-color: var(--cyan);
+        box-shadow: 0 0 0 1px var(--cyan-dim);
+    }
+
+    /* --- SESSION LIST (Living Data) --- */
+    .session-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 15px 0; border-bottom: 1px solid var(--border-subtle);
+    }
+    .session-item:last-child { border-bottom: none; }
+    
+    .device-info { display: flex; align-items: center; gap: 15px; }
+    .device-icon { 
+        width: 36px; height: 36px; background: #111; border-radius: 6px; 
+        display: flex; align-items: center; justify-content: center; color: var(--text-muted); 
+    }
+    
+    .device-details h4 { font-size: 13px; font-weight: 500; }
+    .device-details p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .status-dot { width: 6px; height: 6px; background: var(--cyan); border-radius: 50%; box-shadow: 0 0 8px var(--cyan); }
+
+    /* --- USAGE BAR --- */
+    .usage-wrap { margin-top: 10px; }
+    .usage-meta { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 8px; color: var(--text-muted); }
+    .progress-track { width: 100%; height: 4px; background: #1a1a1a; border-radius: 10px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0; background: var(--cyan); transition: width 1.5s var(--easing); box-shadow: 0 0 10px var(--cyan-glow); }
+
+    /* --- SWITCH --- */
+    .switch { position: relative; width: 36px; height: 20px; cursor: pointer; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background-color: #222; border-radius: 20px; transition: .3s; }
+    .slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: #666; border-radius: 50%; transition: .3s; }
+    input:checked + .slider { background-color: var(--cyan-dim); border: 1px solid var(--cyan-glow); }
+    input:checked + .slider:before { transform: translateX(16px); background-color: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+
+    /* --- API KEY BOX --- */
+    .api-box {
+        background: #000; border: 1px dashed var(--border-subtle);
+        padding: 10px 15px; border-radius: var(--radius);
+        font-family: monospace; color: var(--text-muted); font-size: 12px;
+        display: flex; justify-content: space-between; align-items: center;
+        margin-top: 5px; cursor: pointer; transition: 0.2s;
+    }
+    .api-box:hover { border-color: var(--text-muted); color: var(--text-main); }
+    .api-blur { filter: blur(3px); transition: 0.3s; }
+    .api-box:hover .api-blur { filter: blur(0); }
+
+    /* --- BUTTONS --- */
+    .btn {
+        padding: 10px 20px; border-radius: var(--radius); border: none; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.3s;
+    }
+    .btn-primary {
+        background: var(--text-main); color: #000; margin-left: auto; display: block;
+    }
+    .btn-primary:hover { background: var(--cyan); box-shadow: 0 0 15px var(--cyan-glow); }
+    
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid #222; }
+    .btn-ghost:hover { border-color: #666; color: var(--text-main); }
+
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+    <div class="brand"><i class="fa-solid fa-cube"></i> Nexus // V2</div>
+    
+    <div class="nav-container" id="navContainer">
+        <div class="nav-highlight" id="highlight"></div> <button class="nav-btn active" onclick="switchPage('overview', this)">
+            <i class="fa-solid fa-chart-pie"></i> Overview
+        </button>
+        <button class="nav-btn" onclick="switchPage('account', this)">
+            <i class="fa-regular fa-user"></i> Account
+        </button>
+        <button class="nav-btn" onclick="switchPage('security', this)">
+            <i class="fa-solid fa-shield-halved"></i> Security
+        </button>
+        <button class="nav-btn" onclick="switchPage('billing', this)">
+            <i class="fa-regular fa-credit-card"></i> Billing
+        </button>
+    </div>
+
+    <div style="margin-top: auto; padding: 0 15px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="width: 30px; height: 30px; border-radius: 50%; background: #222; overflow: hidden; border: 1px solid #333;">
+                <img src="https://api.dicebear.com/7.x/micah/svg?seed=Felix" style="width: 100%;">
+            </div>
+            <div style="font-size: 11px;">
+                <div style="color: white; font-weight: 600;">Felix Dev</div>
+                <div style="color: #444;">Pro Plan</div>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main class="content">
+
+    <div class="page active" id="overview">
+        <h1>Dashboard</h1>
+        <p class="desc">Real-time system overview.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="card">
+                <h3>Cloud Storage <span>75%</span></h3>
+                <div class="usage-wrap">
+                    <div class="progress-track"><div class="progress-fill" style="width: 75%"></div></div>
+                    <div class="usage-meta" style="margin-top: 8px;"><span>750GB Used</span><span>1TB Total</span></div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>API Usage <span>Healthy</span></h3>
+                <div class="usage-wrap">
+                    <div class="progress-track"><div class="progress-fill" style="width: 25%; background: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);"></div></div>
+                    <div class="usage-meta" style="margin-top: 8px;"><span>25k Requests</span><span>100k Limit</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Recent Activity <span>Live</span></h3>
+            <div class="session-item">
+                <div class="device-info">
+                    <div class="device-icon"><i class="fa-solid fa-code-commit"></i></div>
+                    <div class="device-details">
+                        <h4>Deployed Project X</h4>
+                        <p>2 minutes ago • Main Branch</p>
+                    </div>
+                </div>
+                <div style="font-size: 11px; color: #444;">Success</div>
+            </div>
+            <div class="session-item">
+                <div class="device-info">
+                    <div class="device-icon"><i class="fa-solid fa-file-invoice"></i></div>
+                    <div class="device-details">
+                        <h4>Invoice Paid</h4>
+                        <p>1 hour ago • $29.00 USD</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="security">
+        <h1>Security</h1>
+        <p class="desc">Manage sessions and access keys.</p>
+
+        <div class="card">
+            <h3>Active Sessions</h3>
+            <div class="session-item">
+                <div class="device-info">
+                    <div class="device-icon"><i class="fa-brands fa-apple"></i></div>
+                    <div class="device-details">
+                        <h4>MacBook Pro 16" <span style="color:var(--cyan); font-size:10px; margin-left: 5px;">THIS DEVICE</span></h4>
+                        <p>Tokyo, Japan • Chrome 114.0</p>
+                    </div>
+                </div>
+                <div class="status-dot"></div>
+            </div>
+            <div class="session-item">
+                <div class="device-info">
+                    <div class="device-icon"><i class="fa-brands fa-windows"></i></div>
+                    <div class="device-details">
+                        <h4>Desktop PC</h4>
+                        <p>Osaka, Japan • 2 days ago</p>
+                    </div>
+                </div>
+                <button class="btn-ghost" style="padding: 5px 10px; font-size: 10px;">Revoke</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>API Keys</h3>
+            <div class="form-group">
+                <label style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 700;">Production Key</label>
+                <div class="api-box" onclick="copyKey(this)">
+                    <span class="api-blur">sk_live_51Mz...9e2x</span>
+                    <i class="fa-regular fa-copy"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="account">
+        <h1>Account</h1>
+        <p class="desc">Personal information and preferences.</p>
+        
+        <div class="card">
+            <div style="display: flex; gap: 20px; align-items: start;">
+                 <div style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid var(--border-subtle); overflow: hidden;">
+                    <img src="https://api.dicebear.com/7.x/micah/svg?seed=Felix" style="width: 100%; height: 100%; object-fit: cover;">
+                 </div>
+                 <div style="flex: 1;">
+                     <div class="input-group">
+                         <label>Display Name</label>
+                         <input type="text" value="Felix Dev">
+                     </div>
+                     <div class="input-group">
+                         <label>Email Address</label>
+                         <input type="email" value="felix@nexus.co">
+                     </div>
+                     <button class="btn btn-primary">Save Changes</button>
+                 </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Notifications</h3>
+            <div class="session-item" style="border:none;">
+                <div class="device-details">
+                    <h4>Marketing Emails</h4>
+                    <p>Receive updates about new products.</p>
+                </div>
+                <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="billing">
+        <h1>Billing</h1>
+        <p class="desc">Manage your subscription and payment methods.</p>
+        <div class="card">
+             <h3>Current Plan <span>PRO</span></h3>
+             <div style="font-size: 24px; font-weight: 700; margin: 10px 0;">$29<span style="font-size: 14px; color: #666; font-weight: 400;">/mo</span></div>
+             <p style="color: #666; font-size: 12px; margin-bottom: 20px;">Next billing date: Oct 24, 2024</p>
+             <button class="btn btn-primary" style="margin: 0; width: 100%;">Manage Subscription</button>
+        </div>
+    </div>
+
+</main>
+
+<script>
+    /* --- MAGIC CURSOR LOGIC --- */
+    const navContainer = document.getElementById('navContainer');
+    const highlight = document.getElementById('highlight');
+    const btns = document.querySelectorAll('.nav-btn');
+
+    function updateHighlight(targetBtn) {
+        const btnRect = targetBtn.getBoundingClientRect();
+        const containerRect = navContainer.getBoundingClientRect();
+        
+        // Calculate relative position
+        const top = btnRect.top - containerRect.top;
+        
+        highlight.style.opacity = '1';
+        highlight.style.top = `${top}px`;
+        highlight.style.height = `${btnRect.height}px`;
+    }
+
+    // Initialize highlight on active button
+    const activeBtn = document.querySelector('.nav-btn.active');
+    if (activeBtn) setTimeout(() => updateHighlight(activeBtn), 100); // Small delay to ensure render
+
+    // Add Hover Listener to all buttons
+    btns.forEach(btn => {
+        btn.addEventListener('mouseenter', () => updateHighlight(btn));
+        btn.addEventListener('click', () => {
+             btns.forEach(b => b.classList.remove('active'));
+             btn.classList.add('active');
+        });
+    });
+
+    // Reset to active button when mouse leaves container
+    navContainer.addEventListener('mouseleave', () => {
+        const currentActive = document.querySelector('.nav-btn.active');
+        if (currentActive) updateHighlight(currentActive);
+    });
+
+
+    /* --- PAGE SWITCHING --- */
+    function switchPage(pageId, btn) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(pageId).classList.add('active');
+    }
+
+    /* --- UTILITIES --- */
+    function copyKey(el) {
+        const original = el.innerHTML;
+        navigator.clipboard.writeText("sk_live_51MzXy2...");
+        
+        el.style.borderColor = "var(--cyan)";
+        el.innerHTML = `<span style="color:var(--cyan); filter:blur(0);">Copied!</span>`;
+        
+        setTimeout(() => {
+            el.innerHTML = original;
+            el.style.borderColor = "";
+        }, 2000);
+    }
+
+    // Trigger progress bar animations on load
+    window.onload = () => {
+        // Redraw widths to trigger CSS transitions
+        const bars = document.querySelectorAll('.progress-fill');
+        bars.forEach(bar => {
+            const width = bar.style.width;
+            bar.style.width = '0';
+            setTimeout(() => bar.style.width = width, 300);
+        });
+    };
+</script>
+
+</body>
+</html>

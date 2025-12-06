@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X, ChevronLeft, User, LogIn, LogOut, FolderOpen, MessageSquare } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft, User, LogIn, LogOut, FolderOpen, MessageSquare, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from './AuthModal';
 import { LoginReminder } from './LoginReminder';
@@ -186,6 +186,16 @@ export function RetroLayout({ children }: RetroLayoutProps) {
                         >
                           <FolderOpen size={12} />
                           YOUR FILES
+                        </Link>
+                        <Link
+                          href="/account"
+                          className="flex items-center gap-2 px-3 py-2 text-[10px] tracking-wider no-underline transition-colors"
+                          style={{ color: 'hsl(var(--text-secondary))' }}
+                          onClick={() => setIsUserMenuOpen(false)}
+                          data-testid="link-account"
+                        >
+                          <Settings size={12} />
+                          ACCOUNT
                         </Link>
                         <button
                           onClick={handleLogout}

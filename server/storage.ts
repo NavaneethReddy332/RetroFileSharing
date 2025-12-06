@@ -23,6 +23,8 @@ export interface IStorage {
   getUserById(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  updateUser(id: number, data: { username?: string; email?: string }): Promise<void>;
+  updateUserPassword(id: number, passwordHash: string): Promise<void>;
 
   createUserFile(file: InsertUserFile): Promise<UserFile>;
   getUserFiles(userId: number, limit?: number): Promise<UserFile[]>;
@@ -212,6 +214,17 @@ export class DatabaseStorage implements IStorage {
   async getUserByUsername(username: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.username, username.toLowerCase())).limit(1);
     return result[0];
+  }
+
+  async updateUser(id: number, data: { username?: string; email?: string }): Promise<void> {
+    const updateData: Partial<{ username: string; email: string }> = {};
+    if (data.username) updateData.username = data.username.toLowerCase();
+    if (data.email) updateData.email = data.email.toLowerCase();
+    await db.update(users).set(updateData).where(eq(users.id, id));
+  }
+
+  async updateUserPassword(id: number, passwordHash: string): Promise<void> {
+    await db.update(users).set({ passwordHash }).where(eq(users.id, id));
   }
 
   async createUserFile(file: InsertUserFile): Promise<UserFile> {
