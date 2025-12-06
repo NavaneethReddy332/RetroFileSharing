@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { RetroLayout } from "../components/RetroLayout";
-import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud, Radio, HardDrive, Link2 } from "lucide-react";
+import { Upload, ArrowRight, Copy, Check, Pause, Play, X, Clock, FileArchive, Trash2, Zap, AlertTriangle, FolderOpen, Users, Square, Cloud, HardDrive, Link2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useLocation } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
@@ -812,54 +812,34 @@ export default function Home() {
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
         <div className="w-72 flex flex-col gap-4">
-          {/* Mode Toggle - Sleek Design */}
-          <div className="relative p-[2px] overflow-hidden" style={{ 
-            background: 'linear-gradient(135deg, hsl(var(--accent) / 0.3), hsl(var(--border-dim)), hsl(200 80% 55% / 0.3))',
-          }}>
-            <div className="relative flex" style={{ background: 'hsl(var(--surface))' }}>
-              <div 
-                className="absolute top-0 bottom-0 transition-all duration-300 ease-out"
-                style={{ 
-                  left: transferMode === 'p2p' ? '0%' : '50%',
-                  width: '50%',
-                  background: transferMode === 'p2p' 
-                    ? 'linear-gradient(135deg, hsl(var(--accent) / 0.15), hsl(var(--accent) / 0.05))' 
-                    : 'linear-gradient(135deg, hsl(200 80% 55% / 0.15), hsl(200 80% 55% / 0.05))',
-                  borderBottom: transferMode === 'p2p' 
-                    ? '2px solid hsl(var(--accent))' 
-                    : '2px solid hsl(200 80% 55%)',
-                  boxShadow: transferMode === 'p2p'
-                    ? '0 0 20px hsl(var(--accent) / 0.3), inset 0 0 20px hsl(var(--accent) / 0.1)'
-                    : '0 0 20px hsl(200 80% 55% / 0.3), inset 0 0 20px hsl(200 80% 55% / 0.1)',
-                }}
-              />
-              <button
-                onClick={() => { setTransferMode('p2p'); resetCloudUpload(); }}
-                className="relative flex-1 flex items-center justify-center gap-2 py-3 px-4 text-[11px] font-medium tracking-[0.15em] transition-all duration-200"
-                style={{ 
-                  color: transferMode === 'p2p' ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
-                  textShadow: transferMode === 'p2p' ? '0 0 10px hsl(var(--accent) / 0.5)' : 'none',
-                }}
-                data-testid="button-mode-p2p"
-              >
-                <Radio size={14} className={transferMode === 'p2p' ? 'animate-pulse' : ''} />
-                P2P
-              </button>
-              <button
-                onClick={() => { setTransferMode('cloud'); resetSender(); }}
-                className="relative flex-1 flex items-center justify-center gap-2 py-3 px-4 text-[11px] font-medium tracking-[0.15em] transition-all duration-200"
-                style={{ 
-                  color: transferMode === 'cloud' ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
-                  textShadow: transferMode === 'cloud' ? '0 0 10px hsl(200 80% 55% / 0.5)' : 'none',
-                  opacity: cloudUpload.cloudEnabled ? 1 : 0.4,
-                }}
-                disabled={!cloudUpload.cloudEnabled}
-                data-testid="button-mode-cloud"
-              >
-                <HardDrive size={14} className={transferMode === 'cloud' ? 'animate-pulse' : ''} />
-                CLOUD
-              </button>
-            </div>
+          {/* Mode Toggle - Minimal */}
+          <div className="flex" style={{ borderBottom: '1px solid hsl(var(--border-dim))' }}>
+            <button
+              onClick={() => { setTransferMode('p2p'); resetCloudUpload(); }}
+              className="flex-1 py-2 text-[10px] tracking-[0.2em] transition-all duration-200"
+              style={{ 
+                color: transferMode === 'p2p' ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))',
+                borderBottom: transferMode === 'p2p' ? '1px solid hsl(var(--text-primary))' : '1px solid transparent',
+                marginBottom: '-1px',
+              }}
+              data-testid="button-mode-p2p"
+            >
+              P2P
+            </button>
+            <button
+              onClick={() => { setTransferMode('cloud'); resetSender(); }}
+              className="flex-1 py-2 text-[10px] tracking-[0.2em] transition-all duration-200"
+              style={{ 
+                color: transferMode === 'cloud' ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))',
+                borderBottom: transferMode === 'cloud' ? '1px solid hsl(var(--text-primary))' : '1px solid transparent',
+                marginBottom: '-1px',
+                opacity: cloudUpload.cloudEnabled ? 1 : 0.3,
+              }}
+              disabled={!cloudUpload.cloudEnabled}
+              data-testid="button-mode-cloud"
+            >
+              CLOUD
+            </button>
           </div>
 
           {/* P2P Mode */}
@@ -1127,30 +1107,29 @@ export default function Home() {
             <>
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+                  <div className="text-[10px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                     UPLOAD TO CLOUD
                   </div>
                   <div className="flex items-center gap-1 text-[9px]" style={{ color: 'hsl(var(--text-dim))' }}>
                     <HardDrive size={10} />
-                    permanent storage
+                    permanent
                   </div>
                 </div>
                 <div
                   onClick={() => cloudFileInputRef.current?.click()}
                   className={`drop-zone p-4 cursor-pointer ${isDragOver ? 'active' : ''}`}
-                  style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}
                   data-testid="cloud-drop-zone"
                 >
                   <div className="flex items-center gap-3">
                     <Cloud
                       size={16}
-                      style={{ color: isDragOver ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))' }}
+                      style={{ color: isDragOver ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))' }}
                     />
                     {cloudFiles.length > 0 ? (
                       <div className="min-w-0 flex-1">
                         {cloudFiles.length === 1 ? (
                           <>
-                            <div className="text-xs truncate" style={{ color: 'hsl(200 80% 55%)' }}>
+                            <div className="text-xs truncate" style={{ color: 'hsl(var(--text-primary))' }}>
                               {cloudFiles[0].name}
                             </div>
                             <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
@@ -1159,7 +1138,7 @@ export default function Home() {
                           </>
                         ) : (
                           <>
-                            <div className="text-xs flex items-center gap-1" style={{ color: 'hsl(200 80% 55%)' }}>
+                            <div className="text-xs flex items-center gap-1" style={{ color: 'hsl(var(--text-primary))' }}>
                               <FileArchive size={12} />
                               {cloudFiles.length} files
                             </div>
@@ -1215,13 +1194,13 @@ export default function Home() {
                   disabled={cloudFiles.length === 0}
                   className="minimal-btn w-full mt-2 flex items-center justify-center gap-2"
                   style={{ 
-                    borderColor: cloudFiles.length > 0 ? 'hsl(200 80% 55%)' : 'hsl(var(--border))',
-                    color: cloudFiles.length > 0 ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))'
+                    borderColor: cloudFiles.length > 0 ? 'hsl(var(--text-primary))' : 'hsl(var(--border))',
+                    color: cloudFiles.length > 0 ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))'
                   }}
                   data-testid="button-cloud-upload"
                 >
                   <Cloud size={12} />
-                  {cloudFiles.length > 1 ? 'zip & upload to cloud' : cloudFiles.length === 1 ? 'upload to cloud' : 'select file(s)'}
+                  {cloudFiles.length > 1 ? 'ZIP & UPLOAD' : cloudFiles.length === 1 ? 'UPLOAD' : 'SELECT FILE(S)'}
                   {cloudFiles.length > 0 && <ArrowRight size={12} />}
                 </button>
               </div>
@@ -1251,10 +1230,6 @@ export default function Home() {
                       }}
                       disabled={receiveCode.length !== 6 && receiveCode.length !== 8}
                       className={`minimal-btn px-3 ${(receiveCode.length === 6 || receiveCode.length === 8) ? 'minimal-btn-accent' : ''}`}
-                      style={{ 
-                        borderColor: receiveCode.length === 8 ? 'hsl(200 80% 55%)' : undefined,
-                        color: receiveCode.length === 8 ? 'hsl(200 80% 55%)' : undefined
-                      }}
                       data-testid="button-cloud-receive"
                     >
                       <ArrowRight size={12} />
@@ -1268,23 +1243,22 @@ export default function Home() {
           {/* Cloud Upload Progress */}
           {transferMode === 'cloud' && cloudUploadStatus === 'uploading' && (
             <div>
-              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 UPLOADING
               </div>
-              <div className="minimal-border p-4" style={{ borderColor: 'hsl(200 80% 55% / 0.3)' }}>
+              <div className="minimal-border p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Cloud size={14} style={{ color: 'hsl(200 80% 55%)' }} className="animate-pulse" />
-                  <div className="text-xs truncate" style={{ color: 'hsl(200 80% 55%)' }}>
+                  <Cloud size={14} style={{ color: 'hsl(var(--text-primary))' }} className="animate-pulse" />
+                  <div className="text-xs truncate" style={{ color: 'hsl(var(--text-primary))' }}>
                     {cloudFileName || 'uploading...'}
                   </div>
                 </div>
-                <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
+                <div className="w-full h-px overflow-hidden" style={{ background: 'hsl(var(--border))' }}>
                   <div 
                     className="h-full transition-all duration-200" 
                     style={{ 
                       width: `${cloudUploadProgress}%`, 
-                      background: 'hsl(200 80% 55%)',
-                      boxShadow: '0 0 8px hsl(200 80% 55% / 0.5)'
+                      background: 'hsl(var(--text-primary))'
                     }} 
                   />
                 </div>
@@ -1295,10 +1269,9 @@ export default function Home() {
               <button
                 onClick={resetCloudUpload}
                 className="minimal-btn w-full mt-2"
-                style={{ borderColor: 'hsl(0 65% 55% / 0.5)', color: 'hsl(0 65% 55%)' }}
                 data-testid="button-cancel-cloud"
               >
-                cancel
+                CANCEL
               </button>
             </div>
           )}
@@ -1306,20 +1279,14 @@ export default function Home() {
           {/* Cloud Upload Success */}
           {transferMode === 'cloud' && cloudUploadStatus === 'success' && cloudCode && (
             <div>
-              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(200 80% 55%)' }}>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 UPLOAD COMPLETE
               </div>
-              <div 
-                className="p-4 rounded"
-                style={{ 
-                  border: '1px solid hsl(200 80% 55%)',
-                  boxShadow: '0 0 20px hsl(200 80% 55% / 0.2)'
-                }}
-              >
+              <div className="minimal-border p-4">
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <div 
                     className="text-xl font-medium tracking-[0.3em]"
-                    style={{ color: 'hsl(200 80% 55%)' }}
+                    style={{ color: 'hsl(var(--text-primary))' }}
                     data-testid="text-cloud-code"
                   >
                     {cloudCode}
@@ -1327,10 +1294,7 @@ export default function Home() {
                   <button
                     onClick={copyCloudCode}
                     className="p-2 transition-colors minimal-border"
-                    style={{ 
-                      color: copied ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
-                      borderColor: 'hsl(200 80% 55% / 0.3)'
-                    }}
+                    style={{ color: copied ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))' }}
                     title="Copy code"
                     data-testid="button-copy-cloud-code"
                   >
@@ -1338,7 +1302,7 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="text-[10px] text-center mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
-                  permanent code - share anytime
+                  permanent code
                 </div>
                 <div className="text-xs truncate mb-3 text-center" style={{ color: 'hsl(var(--text-secondary))' }}>
                   {cloudFileName}
@@ -1346,23 +1310,19 @@ export default function Home() {
                 <button
                   onClick={copyCloudLink}
                   className="minimal-btn w-full flex items-center justify-center gap-2"
-                  style={{ 
-                    borderColor: 'hsl(200 80% 55% / 0.5)',
-                    color: linkCopied ? 'hsl(200 80% 55%)' : 'hsl(var(--text-secondary))'
-                  }}
+                  style={{ color: linkCopied ? 'hsl(var(--text-primary))' : 'hsl(var(--text-secondary))' }}
                   data-testid="button-copy-cloud-link"
                 >
                   {linkCopied ? <Check size={12} /> : <Link2 size={12} />}
-                  {linkCopied ? 'link copied!' : 'copy download link'}
+                  {linkCopied ? 'LINK COPIED' : 'COPY LINK'}
                 </button>
               </div>
               <button
                 onClick={resetCloudUpload}
                 className="minimal-btn w-full mt-2"
-                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
                 data-testid="button-upload-another"
               >
-                upload another
+                UPLOAD ANOTHER
               </button>
             </div>
           )}
@@ -1370,21 +1330,20 @@ export default function Home() {
           {/* Cloud Upload Failed */}
           {transferMode === 'cloud' && cloudUploadStatus === 'failed' && (
             <div>
-              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(0 65% 55%)' }}>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                 UPLOAD FAILED
               </div>
-              <div className="minimal-border p-4 text-center" style={{ borderColor: 'hsl(0 65% 55% / 0.3)' }}>
-                <div className="text-xs" style={{ color: 'hsl(0 65% 55%)' }}>
-                  cloud upload failed
+              <div className="minimal-border p-4 text-center">
+                <div className="text-xs" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  upload failed
                 </div>
               </div>
               <button
                 onClick={resetCloudUpload}
                 className="minimal-btn w-full mt-2"
-                style={{ borderColor: 'hsl(200 80% 55%)', color: 'hsl(200 80% 55%)' }}
                 data-testid="button-try-again-cloud"
               >
-                try again
+                TRY AGAIN
               </button>
             </div>
           )}

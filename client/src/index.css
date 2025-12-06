@@ -10,38 +10,38 @@
   }
 
   :root {
-    /* Ultra Dark Theme - Electric Cyan accent */
-    --surface: 0 0% 1%;
+    /* Pure Monochromatic - Black & White */
+    --surface: 0 0% 0%;
     --panel: 0 0% 4%;
-    --panel-light: 0 0% 7%;
-    --border-main: 187 94% 43%;
-    --border-dim: 0 0% 10%;
-    --border-subtle: 0 0% 7%;
-    --text-primary: 0 0% 93%;
-    --text-secondary: 0 0% 40%;
-    --text-dim: 0 0% 30%;
-    --accent: 187 94% 43%;
-    --accent-glow: 187 100% 50%;
-    --input-bg: 0 0% 2%;
+    --panel-light: 0 0% 8%;
+    --border-main: 0 0% 100%;
+    --border-dim: 0 0% 15%;
+    --border-subtle: 0 0% 10%;
+    --text-primary: 0 0% 100%;
+    --text-secondary: 0 0% 60%;
+    --text-dim: 0 0% 40%;
+    --accent: 0 0% 100%;
+    --accent-glow: 0 0% 100%;
+    --input-bg: 0 0% 3%;
     
-    /* Shadcn semantic tokens */
-    --background: 0 0% 1%;
-    --foreground: 0 0% 93%;
+    /* Shadcn semantic tokens - Monochrome */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
     --card: 0 0% 4%;
-    --card-foreground: 0 0% 93%;
+    --card-foreground: 0 0% 100%;
     --popover: 0 0% 4%;
-    --popover-foreground: 0 0% 93%;
-    --primary: 187 94% 43%;
-    --primary-foreground: 0 0% 1%;
-    --secondary: 0 0% 7%;
-    --secondary-foreground: 0 0% 93%;
-    --muted: 0 0% 7%;
-    --muted-foreground: 0 0% 40%;
-    --destructive: 0 65% 55%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 0 0% 50%;
+    --destructive: 0 0% 40%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 10%;
-    --input: 0 0% 2%;
-    --ring: 187 94% 43%;
+    --border: 0 0% 15%;
+    --input: 0 0% 3%;
+    --ring: 0 0% 100%;
     --radius: 0;
   }
 
@@ -53,7 +53,7 @@
   }
   
   ::selection {
-    background-color: hsl(var(--accent) / 0.3);
+    background-color: hsl(var(--accent) / 0.2);
     color: hsl(var(--text-primary));
   }
 }
@@ -64,7 +64,7 @@
   }
 
   .minimal-border-accent {
-    border: 1px solid hsl(var(--accent) / 0.4);
+    border: 1px solid hsl(var(--accent) / 0.3);
   }
 
   .minimal-input {
@@ -79,7 +79,7 @@
   
   .minimal-input:focus {
     outline: none;
-    border-color: hsl(var(--accent) / 0.6);
+    border-color: hsl(var(--accent) / 0.5);
   }
   
   .minimal-input::placeholder {
@@ -101,7 +101,7 @@
   }
   
   .minimal-btn:hover:not(:disabled) {
-    border-color: hsl(var(--accent) / 0.6);
+    border-color: hsl(var(--accent) / 0.5);
     color: hsl(var(--accent));
   }
 
@@ -111,12 +111,12 @@
   }
 
   .minimal-btn-accent {
-    border-color: hsl(var(--accent) / 0.5);
+    border-color: hsl(var(--accent) / 0.4);
     color: hsl(var(--accent));
   }
 
   .minimal-btn-accent:hover:not(:disabled) {
-    background-color: hsl(var(--accent) / 0.1);
+    background-color: hsl(var(--accent) / 0.08);
     border-color: hsl(var(--accent));
   }
 
@@ -137,22 +137,15 @@
     right: 0;
     top: 50%;
     transform: translateY(-50%);
-    width: 3px;
-    height: 80px;
-    background: hsl(var(--accent) / 0.4);
+    width: 2px;
+    height: 60px;
+    background: hsl(var(--accent) / 0.2);
     transition: all 0.3s ease;
-    animation: sidebar-pulse 3s ease-in-out infinite;
   }
 
   .sidebar-trigger:hover::before {
-    background: hsl(var(--accent) / 0.9);
-    box-shadow: 0 0 12px hsl(var(--accent) / 0.6);
-    height: 120px;
-  }
-
-  @keyframes sidebar-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 0.8; }
+    background: hsl(var(--accent) / 0.6);
+    height: 100px;
   }
 
   .sidebar-panel {
@@ -178,7 +171,7 @@
 
   /* Progress bar */
   .progress-track {
-    height: 2px;
+    height: 1px;
     background-color: hsl(var(--border-subtle));
     overflow: hidden;
   }
@@ -187,19 +180,18 @@
     height: 100%;
     background-color: hsl(var(--accent));
     transition: width 0.1s linear;
-    box-shadow: 0 0 6px hsl(var(--accent-glow) / 0.5);
   }
 
   /* Drop zone */
   .drop-zone {
-    border: 1px dashed hsl(var(--border-dim));
+    border: 1px solid hsl(var(--border-dim));
     transition: all 0.2s ease;
   }
 
   .drop-zone:hover,
   .drop-zone.active {
-    border-color: hsl(var(--accent) / 0.5);
-    background-color: hsl(var(--accent) / 0.03);
+    border-color: hsl(var(--accent) / 0.4);
+    background-color: hsl(var(--accent) / 0.02);
   }
 
   /* Terminal log */
@@ -223,15 +215,10 @@
     background: hsl(var(--border-dim));
   }
 
-  /* Glow effect */
-  .glow-text {
-    text-shadow: 0 0 10px hsl(var(--accent-glow) / 0.5);
-  }
-
   /* Subtle animation */
   @keyframes pulse-subtle {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    50% { opacity: 0.5; }
   }
 
   .animate-pulse-subtle {
@@ -249,9 +236,9 @@
 
   /* Logo plane floating animation */
   @keyframes float {
-    0% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-4px) rotate(1deg); }
-    100% { transform: translateY(0px) rotate(0deg); }
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-3px); }
+    100% { transform: translateY(0px); }
   }
 
   .animate-float {
@@ -265,7 +252,7 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
+    height: 1px;
     z-index: 9999;
     overflow: hidden;
   }
@@ -275,13 +262,12 @@
     width: 100%;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      hsl(var(--accent)) 20%, 
-      hsl(var(--accent-glow)) 50%, 
-      hsl(var(--accent)) 80%, 
+      hsl(var(--accent) / 0.5) 20%, 
+      hsl(var(--accent)) 50%, 
+      hsl(var(--accent) / 0.5) 80%, 
       transparent 100%
     );
     animation: loading-slide 1s ease-in-out infinite;
-    box-shadow: 0 0 10px hsl(var(--accent-glow) / 0.6);
   }
 
   @keyframes loading-slide {
@@ -289,14 +275,14 @@
     100% { transform: translateX(100%); }
   }
 
-  /* Sidebar hover highlight animation */
+  /* Sidebar hover highlight */
   .sidebar-highlight {
     position: absolute;
     left: 0;
     right: 0;
     pointer-events: none;
-    background-color: hsl(var(--accent) / 0.08);
-    border-left: 2px solid hsl(var(--accent));
+    background-color: hsl(var(--accent) / 0.05);
+    border-left: 1px solid hsl(var(--accent) / 0.3);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
