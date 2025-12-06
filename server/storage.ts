@@ -1,6 +1,6 @@
-import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads } from "@shared/schema";
+import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads, type User, type InsertUser, users, type UserFile, type InsertUserFile, userFiles } from "@shared/schema";
 import { db } from "./db";
-import { eq, lte, and, ne, lt } from "drizzle-orm";
+import { eq, lte, and, ne, lt, desc } from "drizzle-orm";
 import { generateSecureCode, generateCloudCode } from "./lib/security";
 
 export interface IStorage {
@@ -18,6 +18,14 @@ export interface IStorage {
   getCloudUploadByCode(code: string): Promise<CloudUpload | undefined>;
   incrementCloudDownloadCount(id: number): Promise<void>;
   deleteCloudUpload(id: number): Promise<void>;
+
+  createUser(user: InsertUser): Promise<User>;
+  getUserById(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+
+  createUserFile(file: InsertUserFile): Promise<UserFile>;
+  getUserFiles(userId: number, limit?: number): Promise<UserFile[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -184,6 +192,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCloudUpload(id: number): Promise<void> {
     await db.delete(cloudUploads).where(eq(cloudUploads.id, id));
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const result = await db.insert(users).values(user).returning();
+    return result[0];
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    return result[0];
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.username, username.toLowerCase())).limit(1);
+    return result[0];
+  }
+
+  async createUserFile(file: InsertUserFile): Promise<UserFile> {
+    const result = await db.insert(userFiles).values(file).returning();
+    return result[0];
+  }
+
+  async getUserFiles(userId: number, limit: number = 50): Promise<UserFile[]> {
+    const result = await db.select().from(userFiles)
+      .where(eq(userFiles.userId, userId))
+      .orderBy(desc(userFiles.createdAt))
+      .limit(limit);
+    return result;
   }
 }
 
