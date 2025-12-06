@@ -5,6 +5,7 @@ import { useSearch } from "wouter";
 import { useWebRTC } from "../hooks/useWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
+import { SpeedGraph } from "../components/SpeedGraph";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor } from "../lib/utils";
 
 type ReceiveMode = 'p2p' | 'cloud';
@@ -965,6 +966,14 @@ export default function Receive() {
                 try another code
               </button>
             </div>
+          )}
+
+          {receiveMode === 'p2p' && (status === 'receiving' || status === 'complete') && (
+            <SpeedGraph 
+              currentSpeed={currentSpeed}
+              isTransferring={status === 'receiving'}
+              isComplete={status === 'complete'}
+            />
           )}
         </div>
 
