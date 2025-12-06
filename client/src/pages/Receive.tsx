@@ -127,7 +127,7 @@ export default function Receive() {
     addLog(`looking up cloud file: ${cloudCode}`, 'system');
 
     try {
-      const response = await fetch(`/api/cloud/${cloudCode}`);
+      const response = await fetch(`/api/cloud/${cloudCode}`, { credentials: 'include' });
       
       if (!response.ok) {
         const data = await response.json();

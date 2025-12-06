@@ -119,6 +119,7 @@ export function useCloudUpload(options: UseCloudUploadOptions = {}) {
 
         // Upload to server endpoint (which proxies to B2)
         xhr.open('POST', '/api/cloud/upload');
+        xhr.withCredentials = true;
         xhr.send(formData);
       });
 
