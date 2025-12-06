@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useLocation, Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { 
   User, 
   Lock, 
@@ -62,10 +62,25 @@ export default function Account() {
   const [securityAlerts, setSecurityAlerts] = useState(true);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('profile');
-  const [hoveredTab, setHoveredTab] = useState<TabId | null>(null);
-  const [hoverStyle, setHoverStyle] = useState({ top: 0, height: 0, opacity: 0 });
-  const navRef = useRef<HTMLDivElement>(null);
-  const tabRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+  const [highlightStyle, setHighlightStyle] = useState<{top: number; height: number; opacity: number}>({ top: 0, height: 0, opacity: 0 });
+  const navContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleNavMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    const target = e.currentTarget;
+    const container = navContainerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    setHighlightStyle({
+      top: targetRect.top - containerRect.top,
+      height: targetRect.height,
+      opacity: 1,
+    });
+  }, []);
+
+  const handleNavMouseLeave = useCallback(() => {
+    setHighlightStyle(prev => ({ ...prev, opacity: 0 }));
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -79,24 +94,6 @@ export default function Account() {
       navigate('/');
     }
   }, [authLoading, isAuthenticated, navigate]);
-
-  useEffect(() => {
-    if (hoveredTab && tabRefs.current[hoveredTab] && navRef.current) {
-      const tab = tabRefs.current[hoveredTab];
-      const nav = navRef.current;
-      if (tab) {
-        const navRect = nav.getBoundingClientRect();
-        const tabRect = tab.getBoundingClientRect();
-        setHoverStyle({
-          top: tabRect.top - navRect.top,
-          height: tabRect.height,
-          opacity: 1
-        });
-      }
-    } else {
-      setHoverStyle(prev => ({ ...prev, opacity: 0 }));
-    }
-  }, [hoveredTab]);
 
   const { data: storageUsage } = useQuery<StorageUsage>({
     queryKey: ['/api/account/storage'],
@@ -234,19 +231,12 @@ export default function Account() {
     { id: 'storage', label: 'Storage', icon: HardDrive },
   ];
 
-  const contentVariants = {
-    initial: { opacity: 0, x: 20 },
-    animate: { opacity: 1, x: 0 },
-    exit: { opacity: 0, x: -20 }
-  };
-
   return (
     <motion.div 
       className="h-screen flex" 
       style={{ backgroundColor: 'hsl(var(--background))' }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
     >
       {/* Fixed Sidebar */}
@@ -259,31 +249,26 @@ export default function Account() {
       >
         {/* Sidebar Header */}
         <div className="p-4" style={{ borderBottom: '1px solid hsl(var(--border-subtle))' }}>
-          <motion.button 
+          <button 
             onClick={handleBack}
-            className="flex items-center gap-2 text-xs no-underline transition-colors mb-4"
+            className="flex items-center gap-2 text-xs transition-colors mb-4 hover:opacity-70"
             style={{ color: 'hsl(var(--text-dim))' }}
             data-testid="button-back-home"
-            whileHover={{ x: -3 }}
-            whileTap={{ scale: 0.98 }}
           >
             <ArrowLeft size={14} />
             <span className="uppercase tracking-wider">Back</span>
-          </motion.button>
+          </button>
           
           <div className="flex items-center gap-3">
-            <motion.div 
+            <div 
               className="w-10 h-10 flex items-center justify-center flex-shrink-0"
               style={{ 
                 backgroundColor: 'hsl(var(--panel))',
                 border: '1px solid hsl(var(--border-dim))'
               }}
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.1 }}
             >
               <User size={16} style={{ color: 'hsl(var(--accent))' }} />
-            </motion.div>
+            </div>
             <div className="min-w-0">
               <div className="text-xs font-medium truncate" style={{ color: 'hsl(var(--text-primary))' }}>
                 {user.username}
@@ -295,34 +280,31 @@ export default function Account() {
           </div>
         </div>
 
-        {/* Navigation with cursor-following hover */}
-        <nav className="flex-1 p-3" ref={navRef}>
+        {/* Navigation with cursor-following hover - matching main sidebar */}
+        <nav className="flex-1 p-3">
           <div className="text-[9px] uppercase tracking-wider px-2 mb-2" style={{ color: 'hsl(var(--text-dim))' }}>
             Settings
           </div>
-          <div className="space-y-1 relative">
-            {/* Hover indicator */}
-            <motion.div
-              className="absolute left-0 right-0 pointer-events-none"
+          <div 
+            ref={navContainerRef}
+            className="relative space-y-1"
+            onMouseLeave={handleNavMouseLeave}
+          >
+            {/* Hover highlight - using CSS transition like main sidebar */}
+            <div
+              className="sidebar-highlight"
               style={{
-                backgroundColor: 'hsl(var(--accent) / 0.08)',
-                border: '1px solid hsl(var(--accent) / 0.2)',
+                top: highlightStyle.top,
+                height: highlightStyle.height,
+                opacity: highlightStyle.opacity,
               }}
-              animate={{
-                top: hoverStyle.top,
-                height: hoverStyle.height,
-                opacity: hoverStyle.opacity
-              }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
             />
             
-            {sidebarItems.map((item, index) => (
-              <motion.button
+            {sidebarItems.map((item) => (
+              <button
                 key={item.id}
-                ref={(el) => { tabRefs.current[item.id] = el; }}
                 onClick={() => setActiveTab(item.id)}
-                onMouseEnter={() => setHoveredTab(item.id)}
-                onMouseLeave={() => setHoveredTab(null)}
+                onMouseEnter={handleNavMouseEnter}
                 className="w-full flex items-center gap-2 px-3 py-2 text-[11px] transition-colors text-left relative z-10"
                 style={{ 
                   color: activeTab === item.id ? 'hsl(var(--accent))' : 'hsl(var(--text-secondary))',
@@ -330,31 +312,25 @@ export default function Account() {
                   border: activeTab === item.id ? '1px solid hsl(var(--accent) / 0.3)' : '1px solid transparent'
                 }}
                 data-testid={`tab-${item.id}`}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                whileTap={{ scale: 0.98 }}
               >
                 <item.icon size={14} />
                 <span className="uppercase tracking-wider">{item.label}</span>
-              </motion.button>
+              </button>
             ))}
           </div>
         </nav>
 
         {/* Sidebar Footer */}
         <div className="p-3" style={{ borderTop: '1px solid hsl(var(--border-subtle))' }}>
-          <motion.button
+          <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] transition-colors text-left"
+            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] transition-colors text-left hover:opacity-70"
             style={{ color: 'hsl(0, 65%, 55%)' }}
             data-testid="button-logout-sidebar"
-            whileHover={{ x: 3 }}
-            whileTap={{ scale: 0.98 }}
           >
             <LogOut size={14} />
             <span className="uppercase tracking-wider">Sign Out</span>
-          </motion.button>
+          </button>
         </div>
       </div>
 
@@ -362,38 +338,26 @@ export default function Account() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl p-6">
           <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              variants={contentVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              {/* Header */}
-              <div className="mb-6">
-                <h1 className="text-base font-medium mb-1" style={{ color: 'hsl(var(--text-primary))' }}>
-                  {activeTab === 'profile' && 'Profile Settings'}
-                  {activeTab === 'security' && 'Security Settings'}
-                  {activeTab === 'storage' && 'Storage & Usage'}
-                </h1>
-                <p className="text-[11px]" style={{ color: 'hsl(var(--text-dim))' }}>
-                  {activeTab === 'profile' && 'Manage your personal information and preferences'}
-                  {activeTab === 'security' && 'Protect your account with password and session management'}
-                  {activeTab === 'storage' && 'Monitor your cloud storage and transfer statistics'}
-                </p>
-              </div>
+            {/* Profile Tab Content */}
+            {activeTab === 'profile' && (
+              <motion.div
+                key="profile"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <div className="mb-6">
+                  <h1 className="text-base font-medium mb-1" style={{ color: 'hsl(var(--text-primary))' }}>
+                    Profile Settings
+                  </h1>
+                  <p className="text-[11px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    Manage your personal information and preferences
+                  </p>
+                </div>
 
-              {/* Profile Tab Content */}
-              {activeTab === 'profile' && (
                 <div className="space-y-4">
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-4" style={{ color: 'hsl(var(--text-primary))' }}>
                       Personal Information
                     </h3>
@@ -424,27 +388,19 @@ export default function Account() {
                         />
                       </div>
                       
-                      <motion.button
+                      <button
                         onClick={handleSaveProfile}
                         disabled={updateProfileMutation.isPending}
                         className="minimal-btn minimal-btn-accent flex items-center gap-1.5"
                         data-testid="button-save-profile"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                       >
                         <Save size={12} />
                         {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
-                      </motion.button>
+                      </button>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-3 flex items-center justify-between gap-2" style={{ color: 'hsl(var(--text-primary))' }}>
                       Account Info
                       <span 
@@ -465,16 +421,14 @@ export default function Account() {
                           <span className="text-[11px] font-mono" style={{ color: 'hsl(var(--text-secondary))' }}>
                             #{user.id}
                           </span>
-                          <motion.button 
+                          <button 
                             onClick={copyUserId}
-                            className="p-1 transition-colors"
+                            className="p-1 transition-colors hover:opacity-70"
                             style={{ color: 'hsl(var(--text-dim))' }}
                             data-testid="button-copy-user-id"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
                           >
                             {copied ? <Check size={12} style={{ color: 'hsl(var(--accent))' }} /> : <Copy size={12} />}
-                          </motion.button>
+                          </button>
                         </div>
                       </div>
                       
@@ -492,15 +446,9 @@ export default function Account() {
                         </span>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-3" style={{ color: 'hsl(var(--text-primary))' }}>
                       Notifications
                     </h3>
@@ -519,24 +467,22 @@ export default function Account() {
                             className="sr-only peer"
                             data-testid="toggle-email-notifications"
                           />
-                          <motion.div 
+                          <div 
                             className="w-8 h-4 relative"
                             style={{
                               backgroundColor: emailNotifications ? 'hsl(var(--accent) / 0.2)' : 'hsl(var(--border-dim))',
                               border: emailNotifications ? '1px solid hsl(var(--accent) / 0.5)' : '1px solid hsl(var(--border-dim))',
                             }}
-                            whileTap={{ scale: 0.95 }}
                           >
-                            <motion.span 
-                              className="absolute w-3 h-3 top-0.5"
+                            <span 
+                              className="absolute w-3 h-3 top-0.5 transition-all duration-200"
                               style={{
                                 backgroundColor: emailNotifications ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
+                                left: emailNotifications ? '17px' : '2px',
                                 boxShadow: emailNotifications ? '0 0 8px hsl(var(--accent))' : 'none',
                               }}
-                              animate={{ left: emailNotifications ? 17 : 2 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                             />
-                          </motion.div>
+                          </div>
                         </label>
                       </div>
                       
@@ -553,41 +499,50 @@ export default function Account() {
                             className="sr-only peer"
                             data-testid="toggle-security-alerts"
                           />
-                          <motion.div 
+                          <div 
                             className="w-8 h-4 relative"
                             style={{
                               backgroundColor: securityAlerts ? 'hsl(var(--accent) / 0.2)' : 'hsl(var(--border-dim))',
                               border: securityAlerts ? '1px solid hsl(var(--accent) / 0.5)' : '1px solid hsl(var(--border-dim))',
                             }}
-                            whileTap={{ scale: 0.95 }}
                           >
-                            <motion.span 
-                              className="absolute w-3 h-3 top-0.5"
+                            <span 
+                              className="absolute w-3 h-3 top-0.5 transition-all duration-200"
                               style={{
                                 backgroundColor: securityAlerts ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
+                                left: securityAlerts ? '17px' : '2px',
                                 boxShadow: securityAlerts ? '0 0 8px hsl(var(--accent))' : 'none',
                               }}
-                              animate={{ left: securityAlerts ? 17 : 2 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                             />
-                          </motion.div>
+                          </div>
                         </label>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
-              )}
+              </motion.div>
+            )}
 
-              {/* Security Tab Content */}
-              {activeTab === 'security' && (
+            {/* Security Tab Content */}
+            {activeTab === 'security' && (
+              <motion.div
+                key="security"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <div className="mb-6">
+                  <h1 className="text-base font-medium mb-1" style={{ color: 'hsl(var(--text-primary))' }}>
+                    Security Settings
+                  </h1>
+                  <p className="text-[11px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    Protect your account with password and session management
+                  </p>
+                </div>
+
                 <div className="space-y-4">
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-4" style={{ color: 'hsl(var(--text-primary))' }}>
                       Change Password
                     </h3>
@@ -652,27 +607,19 @@ export default function Account() {
                         />
                       </div>
                       
-                      <motion.button
+                      <button
                         onClick={handleChangePassword}
                         disabled={changePasswordMutation.isPending}
                         className="minimal-btn minimal-btn-accent flex items-center gap-1.5"
                         data-testid="button-change-password"
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                       >
                         <Lock size={12} />
                         {changePasswordMutation.isPending ? 'Changing...' : 'Change Password'}
-                      </motion.button>
+                      </button>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-3 flex items-center justify-between gap-2" style={{ color: 'hsl(var(--text-primary))' }}>
                       Active Sessions
                       <span 
@@ -743,31 +690,23 @@ export default function Account() {
                               </div>
                             </div>
                           </div>
-                          <motion.button
+                          <button
                             onClick={() => revokeSessionMutation.mutate(session.id)}
-                            className="text-[10px] px-2 py-1 transition-colors"
+                            className="text-[10px] px-2 py-1 transition-colors hover:opacity-70"
                             style={{ 
                               color: 'hsl(0, 65%, 55%)',
                               border: '1px solid hsl(0, 65%, 55% / 0.3)'
                             }}
                             data-testid={`button-revoke-session-${session.id}`}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
                           >
                             Revoke
-                          </motion.button>
+                          </button>
                         </div>
                       ))}
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-3 flex items-center gap-2" style={{ color: 'hsl(0, 65%, 55%)' }}>
                       <AlertTriangle size={14} />
                       Danger Zone
@@ -775,33 +714,42 @@ export default function Account() {
                     <p className="text-[11px] mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
                       Permanently delete your account and all associated data. This action cannot be undone.
                     </p>
-                    <motion.button
+                    <button
                       className="minimal-btn flex items-center gap-1.5"
                       style={{ 
                         color: 'hsl(0, 65%, 55%)',
                         borderColor: 'hsl(0, 65%, 55% / 0.5)'
                       }}
                       data-testid="button-delete-account"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       <Trash2 size={12} />
                       Delete Account
-                    </motion.button>
-                  </motion.div>
+                    </button>
+                  </div>
                 </div>
-              )}
+              </motion.div>
+            )}
 
-              {/* Storage Tab Content */}
-              {activeTab === 'storage' && (
+            {/* Storage Tab Content */}
+            {activeTab === 'storage' && (
+              <motion.div
+                key="storage"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <div className="mb-6">
+                  <h1 className="text-base font-medium mb-1" style={{ color: 'hsl(var(--text-primary))' }}>
+                    Storage & Usage
+                  </h1>
+                  <p className="text-[11px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    Monitor your cloud storage and transfer statistics
+                  </p>
+                </div>
+
                 <div className="space-y-4">
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-4 flex items-center justify-between gap-2" style={{ color: 'hsl(var(--text-primary))' }}>
                       Cloud Storage
                       <span 
@@ -851,27 +799,20 @@ export default function Account() {
                         </span>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-4" style={{ color: 'hsl(var(--text-primary))' }}>
                       Transfer Statistics
                     </h3>
                     
                     <div className="grid grid-cols-2 gap-4">
-                      <motion.div 
+                      <div 
                         className="p-3 text-center"
                         style={{ 
                           backgroundColor: 'hsl(var(--surface))',
                           border: '1px solid hsl(var(--border-dim))'
                         }}
-                        whileHover={{ scale: 1.02 }}
                       >
                         <div className="text-lg font-medium" style={{ color: 'hsl(var(--accent))' }}>
                           {accountStats?.totalTransfers ?? 0}
@@ -879,14 +820,13 @@ export default function Account() {
                         <div className="text-[10px] uppercase tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                           Total Transfers
                         </div>
-                      </motion.div>
-                      <motion.div 
+                      </div>
+                      <div 
                         className="p-3 text-center"
                         style={{ 
                           backgroundColor: 'hsl(var(--surface))',
                           border: '1px solid hsl(var(--border-dim))'
                         }}
-                        whileHover={{ scale: 1.02 }}
                       >
                         <div className="text-lg font-medium" style={{ color: 'hsl(var(--accent))' }}>
                           {formatBytes(accountStats?.totalBytesTransferred ?? 0)}
@@ -894,36 +834,28 @@ export default function Account() {
                         <div className="text-[10px] uppercase tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
                           Data Transferred
                         </div>
-                      </motion.div>
+                      </div>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  <motion.div 
-                    className="minimal-border p-4" 
-                    style={{ backgroundColor: 'hsl(var(--panel))' }}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                  >
+                  <div className="minimal-border p-4" style={{ backgroundColor: 'hsl(var(--panel))' }}>
                     <h3 className="text-xs font-medium mb-3" style={{ color: 'hsl(var(--text-primary))' }}>
                       Storage Upgrade
                     </h3>
                     <p className="text-[11px] mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
                       Need more space? Upgrade your plan to get additional storage and features.
                     </p>
-                    <motion.button
+                    <button
                       className="minimal-btn minimal-btn-accent flex items-center gap-1.5"
                       data-testid="button-upgrade-storage"
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                     >
                       <Send size={12} />
                       View Plans
-                    </motion.button>
-                  </motion.div>
+                    </button>
+                  </div>
                 </div>
-              )}
-            </motion.div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
       </div>
