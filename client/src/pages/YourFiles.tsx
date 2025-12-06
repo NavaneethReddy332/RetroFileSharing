@@ -2,8 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useRef, useCallback } from 'react';
 import { RetroLayout } from '@/components/RetroLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRefresh } from '@/contexts/RefreshContext';
 import { Redirect } from 'wouter';
-import { FileText, Upload, Download, Cloud, Loader2, FolderOpen, Wifi, CheckCircle, XCircle, AlertCircle, ExternalLink, Copy, X } from 'lucide-react';
+import { FileText, Upload, Download, Cloud, Loader2, FolderOpen, Wifi, CheckCircle, XCircle, AlertCircle, ExternalLink, Copy, X, RefreshCw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { UserFile } from '@shared/schema';
 
@@ -279,6 +280,7 @@ function CloudFileModal({ file, onClose }: CloudFileModalProps) {
 
 export default function YourFiles() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isRefreshing, triggerRefresh } = useRefresh();
   const [selectedFile, setSelectedFile] = useState<UserFile | null>(null);
   const [highlightStyle, setHighlightStyle] = useState<{
     top: number;
@@ -328,20 +330,37 @@ export default function YourFiles() {
   return (
     <RetroLayout>
       <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <h1 
-            className="text-sm tracking-[0.2em] font-medium flex items-center gap-2"
-            style={{ color: 'hsl(var(--accent))' }}
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 
+              className="text-sm tracking-[0.2em] font-medium flex items-center gap-2"
+              style={{ color: 'hsl(var(--accent))' }}
+            >
+              <FolderOpen size={16} />
+              YOUR FILES
+            </h1>
+            <p 
+              className="text-[10px] mt-1"
+              style={{ color: 'hsl(var(--text-dim))' }}
+            >
+              Your file transfer history
+            </p>
+          </div>
+          <button
+            onClick={triggerRefresh}
+            disabled={isRefreshing || isLoading}
+            className="flex items-center gap-2 px-3 py-1.5 text-[10px] tracking-wider transition-all minimal-border"
+            style={{ 
+              color: isRefreshing ? 'hsl(var(--text-dim))' : 'hsl(var(--text-secondary))',
+            }}
+            data-testid="button-refresh-files"
           >
-            <FolderOpen size={16} />
-            YOUR FILES
-          </h1>
-          <p 
-            className="text-[10px] mt-1"
-            style={{ color: 'hsl(var(--text-dim))' }}
-          >
-            Your file transfer history
-          </p>
+            <RefreshCw 
+              size={12} 
+              className={isRefreshing ? 'animate-spin' : ''} 
+            />
+            {isRefreshing ? 'REFRESHING...' : 'REFRESH'}
+          </button>
         </div>
 
         {isLoading ? (

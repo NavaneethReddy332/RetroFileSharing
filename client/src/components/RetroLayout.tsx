@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X, ChevronLeft, User, Users, Zap, Code, LogIn, LogOut, FolderOpen } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft, User, LogIn, LogOut, FolderOpen, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from './AuthModal';
 import { LoginReminder } from './LoginReminder';
@@ -15,11 +15,30 @@ export function RetroLayout({ children }: RetroLayoutProps) {
   const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [highlightStyle, setHighlightStyle] = useState<{top: number; height: number; opacity: number;}>({ top: 0, height: 0, opacity: 0 });
   const [location] = useLocation();
   const sidebarRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarLinksRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+
+  const handleLinkMouseEnter = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    const target = e.currentTarget;
+    const container = sidebarLinksRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    setHighlightStyle({
+      top: targetRect.top - containerRect.top,
+      height: targetRect.height,
+      opacity: 1,
+    });
+  }, []);
+
+  const handleLinkMouseLeave = useCallback(() => {
+    setHighlightStyle(prev => ({ ...prev, opacity: 0 }));
+  }, []);
 
   const clearCloseTimeout = useCallback(() => {
     if (closeTimeoutRef.current) {
@@ -304,113 +323,75 @@ export function RetroLayout({ children }: RetroLayoutProps) {
           </button>
         </div>
 
-        <Link
-          href="/"
-          className="flex items-center gap-3 p-3 minimal-border transition-all hover:border-[hsl(var(--accent)/0.4)] no-underline"
-          onClick={() => setIsSidebarOpen(false)}
-          data-testid="sidebar-link-send"
+        <div 
+          ref={sidebarLinksRef}
+          className="relative space-y-2"
+          onMouseLeave={handleLinkMouseLeave}
         >
-          <Send size={14} style={{ color: 'hsl(var(--accent))' }} />
-          <div>
-            <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Send File</div>
-            <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Share instantly</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/receive"
-          className="flex items-center gap-3 p-3 minimal-border transition-all hover:border-[hsl(var(--accent)/0.4)] no-underline"
-          onClick={() => setIsSidebarOpen(false)}
-          data-testid="sidebar-link-receive"
-        >
-          <Download size={14} style={{ color: 'hsl(var(--accent))' }} />
-          <div>
-            <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Receive File</div>
-            <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Enter code to download</div>
-          </div>
-        </Link>
-
-        {/* About Section */}
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
-          <div className="text-[10px] tracking-[0.2em] mb-3" style={{ color: 'hsl(var(--text-dim))' }}>
-            ABOUT
-          </div>
+          <div
+            className="sidebar-highlight"
+            style={{
+              top: highlightStyle.top,
+              height: highlightStyle.height,
+              opacity: highlightStyle.opacity,
+            }}
+          />
           
-          {/* Developer */}
-          <div className="mb-3">
-            <div className="flex items-center gap-2 mb-1">
-              <User size={10} style={{ color: 'hsl(var(--accent))' }} />
-              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>DEVELOPER</span>
+          <Link
+            href="/"
+            className="relative flex items-center gap-3 p-3 minimal-border transition-all no-underline"
+            onClick={() => setIsSidebarOpen(false)}
+            onMouseEnter={handleLinkMouseEnter}
+            data-testid="sidebar-link-send"
+          >
+            <Send size={14} style={{ color: 'hsl(var(--accent))' }} />
+            <div>
+              <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Send File</div>
+              <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Share instantly</div>
             </div>
-            <div className="text-xs font-medium pl-4" style={{ color: 'hsl(var(--accent))' }}>
-              RONINN
-            </div>
-          </div>
+          </Link>
 
-          {/* Team */}
-          <div className="mb-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Users size={10} style={{ color: 'hsl(var(--accent))' }} />
-              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>TEAM</span>
+          <Link
+            href="/receive"
+            className="relative flex items-center gap-3 p-3 minimal-border transition-all no-underline"
+            onClick={() => setIsSidebarOpen(false)}
+            onMouseEnter={handleLinkMouseEnter}
+            data-testid="sidebar-link-receive"
+          >
+            <Download size={14} style={{ color: 'hsl(var(--accent))' }} />
+            <div>
+              <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Receive File</div>
+              <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Enter code to download</div>
             </div>
-            <div className="text-[10px] pl-4 space-y-0.5" style={{ color: 'hsl(var(--text-secondary))' }}>
-              <div>RONINN</div>
-              <div style={{ color: 'hsl(var(--accent))' }}>REPLIT</div>
-            </div>
-          </div>
+          </Link>
 
-          {/* App Info */}
-          <div className="mb-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Code size={10} style={{ color: 'hsl(var(--accent))' }} />
-              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>APP INFO</span>
+          <Link
+            href="/about"
+            className="relative flex items-center gap-3 p-3 minimal-border transition-all no-underline"
+            onClick={() => setIsSidebarOpen(false)}
+            onMouseEnter={handleLinkMouseEnter}
+            data-testid="sidebar-link-about"
+          >
+            <Info size={14} style={{ color: 'hsl(var(--accent))' }} />
+            <div>
+              <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>About</div>
+              <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Learn more about AeroSend</div>
             </div>
-            <div className="text-[9px] pl-4 leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
-              AeroSend is a peer-to-peer file transfer application. Transfer files directly between devices without storing data on servers.
-            </div>
-          </div>
+          </Link>
 
-          {/* Powered By */}
-          <div className="mb-2">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap size={10} style={{ color: 'hsl(var(--accent))' }} />
-              <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>POWERED BY</span>
+          <Link
+            href="/feedback"
+            className="relative flex items-center gap-3 p-3 minimal-border transition-all no-underline"
+            onClick={() => setIsSidebarOpen(false)}
+            onMouseEnter={handleLinkMouseEnter}
+            data-testid="sidebar-link-feedback"
+          >
+            <MessageSquare size={14} style={{ color: 'hsl(var(--accent))' }} />
+            <div>
+              <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Feedback</div>
+              <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Share your thoughts</div>
             </div>
-            <a 
-              href="https://replit.com" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 pl-4 transition-opacity hover:opacity-80 no-underline"
-              data-testid="sidebar-link-replit"
-            >
-              <svg 
-                width="14" 
-                height="14" 
-                viewBox="0 0 32 32" 
-                fill="none" 
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path 
-                  d="M7 5.5C7 4.67157 7.67157 4 8.5 4H15.5C16.3284 4 17 4.67157 17 5.5V12H8.5C7.67157 12 7 11.3284 7 10.5V5.5Z" 
-                  fill="hsl(var(--accent))"
-                />
-                <path 
-                  d="M17 12H25.5C26.3284 12 27 12.6716 27 13.5V18.5C27 19.3284 26.3284 20 25.5 20H17V12Z" 
-                  fill="hsl(var(--accent))"
-                />
-                <path 
-                  d="M7 21.5C7 20.6716 7.67157 20 8.5 20H17V28H8.5C7.67157 28 7 27.3284 7 26.5V21.5Z" 
-                  fill="hsl(var(--accent))"
-                />
-              </svg>
-              <span className="text-[10px] font-medium" style={{ color: 'hsl(var(--accent))' }}>
-                REPLIT
-              </span>
-            </a>
-            <div className="text-[8px] pl-4 mt-1 leading-relaxed" style={{ color: 'hsl(var(--text-dim))' }}>
-              Built and deployed with Replit - the collaborative browser-based IDE for building software.
-            </div>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-auto pt-3 border-t" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
