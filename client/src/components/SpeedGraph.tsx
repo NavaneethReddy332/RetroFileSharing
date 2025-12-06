@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Zap, Clock, TrendingUp, Award } from 'lucide-react';
 
 interface SpeedDataPoint {
@@ -21,7 +21,12 @@ interface SpeedGraphProps {
 }
 
 const MAX_DATA_POINTS = 60;
-const UPDATE_INTERVAL = 500;
+const UPDATE_INTERVAL = 250;
+const GRAPH_WIDTH = 280;
+const GRAPH_HEIGHT = 100;
+const PADDING = 4;
+const GRID_COLS = 10;
+const GRID_ROWS = 4;
 
 function formatSpeed(speed: number): string {
   if (speed >= 1000) {
@@ -60,15 +65,37 @@ function getSpeedBadge(avgSpeed: number): { label: string; color: string; icon: 
 export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCalculated }: SpeedGraphProps) {
   const [speedHistory, setSpeedHistory] = useState<SpeedDataPoint[]>([]);
   const [stats, setStats] = useState<TransferStats | null>(null);
+  const [displaySpeed, setDisplaySpeed] = useState(0);
   const startTimeRef = useRef<number>(0);
   const totalBytesRef = useRef<number>(0);
   const hasCalculatedStats = useRef(false);
   const currentSpeedRef = useRef<number>(0);
+  const animationFrameRef = useRef<number>(0);
 
-  // Keep ref updated with latest speed value
   useEffect(() => {
     currentSpeedRef.current = currentSpeed;
   }, [currentSpeed]);
+
+  const smoothUpdateSpeed = useCallback(() => {
+    setDisplaySpeed(prev => {
+      const target = currentSpeedRef.current;
+      const diff = target - prev;
+      if (Math.abs(diff) < 0.1) return target;
+      return prev + diff * 0.3;
+    });
+    animationFrameRef.current = requestAnimationFrame(smoothUpdateSpeed);
+  }, []);
+
+  useEffect(() => {
+    if (isTransferring) {
+      animationFrameRef.current = requestAnimationFrame(smoothUpdateSpeed);
+    }
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isTransferring, smoothUpdateSpeed]);
 
   useEffect(() => {
     if (isTransferring && !startTimeRef.current) {
@@ -76,6 +103,7 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
       hasCalculatedStats.current = false;
       setSpeedHistory([]);
       setStats(null);
+      setDisplaySpeed(0);
     }
   }, [isTransferring]);
 
@@ -127,64 +155,75 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
       hasCalculatedStats.current = false;
       setSpeedHistory([]);
       setStats(null);
+      setDisplaySpeed(0);
     }
   }, [isTransferring, isComplete]);
 
-  const graphPath = useMemo(() => {
-    if (speedHistory.length < 2) return '';
+  const { graphPath, linePath, lastPoint, maxSpeed } = useMemo(() => {
+    if (speedHistory.length < 2) {
+      return { graphPath: '', linePath: '', lastPoint: null, maxSpeed: 1 };
+    }
     
-    const maxSpeed = Math.max(...speedHistory.map(p => p.speed), 1);
-    const width = 280;
-    const height = 100;
-    const padding = 4;
+    const maxSpd = Math.max(...speedHistory.map(p => p.speed), 1);
+    const usableWidth = GRAPH_WIDTH - PADDING * 2;
+    const usableHeight = GRAPH_HEIGHT - PADDING * 2;
     
     const points = speedHistory.map((point, index) => {
-      const x = padding + (index / (MAX_DATA_POINTS - 1)) * (width - padding * 2);
-      const y = height - padding - (point.speed / maxSpeed) * (height - padding * 2);
+      const x = PADDING + (index / (MAX_DATA_POINTS - 1)) * usableWidth;
+      const y = GRAPH_HEIGHT - PADDING - (point.speed / maxSpd) * usableHeight;
       return { x, y };
     });
 
-    let path = `M ${points[0].x} ${height}`;
-    path += ` L ${points[0].x} ${points[0].y}`;
+    let areaPath = `M ${points[0].x} ${GRAPH_HEIGHT - PADDING}`;
+    areaPath += ` L ${points[0].x} ${points[0].y}`;
     
     for (let i = 1; i < points.length; i++) {
       const prev = points[i - 1];
       const curr = points[i];
-      const cpX = (prev.x + curr.x) / 2;
-      path += ` C ${cpX} ${prev.y}, ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
+      const tension = 0.3;
+      const cpx1 = prev.x + (curr.x - prev.x) * tension;
+      const cpx2 = curr.x - (curr.x - prev.x) * tension;
+      areaPath += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
     }
     
-    path += ` L ${points[points.length - 1].x} ${height}`;
-    path += ' Z';
-    
-    return path;
-  }, [speedHistory]);
+    areaPath += ` L ${points[points.length - 1].x} ${GRAPH_HEIGHT - PADDING}`;
+    areaPath += ' Z';
 
-  const linePath = useMemo(() => {
-    if (speedHistory.length < 2) return '';
-    
-    const maxSpeed = Math.max(...speedHistory.map(p => p.speed), 1);
-    const width = 280;
-    const height = 100;
-    const padding = 4;
-    
-    const points = speedHistory.map((point, index) => {
-      const x = padding + (index / (MAX_DATA_POINTS - 1)) * (width - padding * 2);
-      const y = height - padding - (point.speed / maxSpeed) * (height - padding * 2);
-      return { x, y };
-    });
-
-    let path = `M ${points[0].x} ${points[0].y}`;
-    
+    let strokePath = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       const prev = points[i - 1];
       const curr = points[i];
-      const cpX = (prev.x + curr.x) / 2;
-      path += ` C ${cpX} ${prev.y}, ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
+      const tension = 0.3;
+      const cpx1 = prev.x + (curr.x - prev.x) * tension;
+      const cpx2 = curr.x - (curr.x - prev.x) * tension;
+      strokePath += ` C ${cpx1} ${prev.y}, ${cpx2} ${curr.y}, ${curr.x} ${curr.y}`;
     }
     
-    return path;
+    return { 
+      graphPath: areaPath, 
+      linePath: strokePath, 
+      lastPoint: points[points.length - 1],
+      maxSpeed: maxSpd
+    };
   }, [speedHistory]);
+
+  const gridLines = useMemo(() => {
+    const lines: { x1: number; y1: number; x2: number; y2: number; isVertical: boolean }[] = [];
+    const usableWidth = GRAPH_WIDTH - PADDING * 2;
+    const usableHeight = GRAPH_HEIGHT - PADDING * 2;
+    
+    for (let i = 0; i <= GRID_COLS; i++) {
+      const x = PADDING + (i / GRID_COLS) * usableWidth;
+      lines.push({ x1: x, y1: PADDING, x2: x, y2: GRAPH_HEIGHT - PADDING, isVertical: true });
+    }
+    
+    for (let i = 0; i <= GRID_ROWS; i++) {
+      const y = PADDING + (i / GRID_ROWS) * usableHeight;
+      lines.push({ x1: PADDING, y1: y, x2: GRAPH_WIDTH - PADDING, y2: y, isVertical: false });
+    }
+    
+    return lines;
+  }, []);
 
   const badge = stats ? getSpeedBadge(stats.averageSpeed) : null;
 
@@ -278,7 +317,7 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
           style={{ color: 'hsl(var(--accent))' }}
           data-testid="text-current-speed"
         >
-          {formatSpeed(currentSpeed)}
+          {formatSpeed(displaySpeed)}
         </span>
       </div>
       <div 
@@ -288,33 +327,35 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
         <svg 
           width="100%" 
           height="100" 
-          viewBox="0 0 280 100" 
+          viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
           preserveAspectRatio="none"
           style={{ display: 'block' }}
         >
           <defs>
             <linearGradient id="speedGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="hsl(var(--accent))" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0.05" />
-            </linearGradient>
-            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="1" />
+              <stop offset="50%" stopColor="hsl(var(--accent))" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0" />
             </linearGradient>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           
-          {[0.25, 0.5, 0.75].map((ratio) => (
+          {gridLines.map((line, i) => (
             <line
-              key={ratio}
-              x1="4"
-              y1={100 - ratio * 92}
-              x2="276"
-              y2={100 - ratio * 92}
-              stroke="hsl(var(--border-subtle))"
+              key={i}
+              x1={line.x1}
+              y1={line.y1}
+              x2={line.x2}
+              y2={line.y2}
+              stroke="hsl(var(--accent))"
               strokeWidth="0.5"
-              strokeDasharray="2,2"
-              opacity="0.3"
+              opacity={line.isVertical ? 0.08 : 0.12}
             />
           ))}
           
@@ -323,33 +364,55 @@ export function SpeedGraph({ currentSpeed, isTransferring, isComplete, onStatsCa
               <path
                 d={graphPath}
                 fill="url(#speedGradient)"
-                className="transition-all duration-300"
               />
               <path
                 d={linePath}
                 fill="none"
-                stroke="url(#lineGradient)"
+                stroke="hsl(var(--accent))"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="transition-all duration-300"
+                filter="url(#glow)"
+                opacity="0.9"
               />
-              {speedHistory.length > 0 && (
-                <circle
-                  cx={4 + ((speedHistory.length - 1) / (MAX_DATA_POINTS - 1)) * 272}
-                  cy={100 - 4 - (speedHistory[speedHistory.length - 1].speed / Math.max(...speedHistory.map(p => p.speed), 1)) * 92}
-                  r="4"
-                  fill="hsl(var(--accent))"
-                  className="animate-pulse"
-                />
+              {lastPoint && (
+                <>
+                  <circle
+                    cx={lastPoint.x}
+                    cy={lastPoint.y}
+                    r="6"
+                    fill="hsl(var(--accent))"
+                    opacity="0.3"
+                  >
+                    <animate
+                      attributeName="r"
+                      values="4;8;4"
+                      dur="1.5s"
+                      repeatCount="indefinite"
+                    />
+                    <animate
+                      attributeName="opacity"
+                      values="0.4;0.1;0.4"
+                      dur="1.5s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <circle
+                    cx={lastPoint.x}
+                    cy={lastPoint.y}
+                    r="3"
+                    fill="hsl(var(--accent))"
+                    filter="url(#glow)"
+                  />
+                </>
               )}
             </>
           )}
           
           {speedHistory.length < 2 && (
             <text
-              x="140"
-              y="55"
+              x={GRAPH_WIDTH / 2}
+              y={GRAPH_HEIGHT / 2 + 4}
               textAnchor="middle"
               fill="hsl(var(--text-dim))"
               fontSize="10"
