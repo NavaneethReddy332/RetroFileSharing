@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { RetroLayout } from '@/components/RetroLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { Redirect } from 'wouter';
-import { FileText, Upload, Download, Cloud, Loader2, FolderOpen } from 'lucide-react';
+import { FileText, Upload, Download, Cloud, Loader2, FolderOpen, Wifi, CheckCircle, XCircle, AlertCircle, ExternalLink, Copy, X } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import type { UserFile } from '@shared/schema';
 
 function formatFileSize(bytes: number): string {
@@ -24,8 +26,260 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function isCloudFile(transferType: string): boolean {
+  return transferType === 'cloud_upload' || transferType === 'cloud_download';
+}
+
+function getTransferIcon(transferType: string) {
+  if (transferType === 'cloud_upload' || transferType === 'cloud_download') {
+    return <Cloud size={16} style={{ color: 'hsl(var(--accent))' }} />;
+  }
+  if (transferType === 'p2p') {
+    return <Wifi size={16} style={{ color: 'hsl(var(--text-secondary))' }} />;
+  }
+  return <FileText size={16} style={{ color: 'hsl(var(--text-dim))' }} />;
+}
+
+function getStatusBadge(status?: string) {
+  if (!status) return null;
+  
+  switch (status) {
+    case 'completed':
+      return (
+        <div 
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] tracking-wider"
+          style={{ 
+            backgroundColor: 'hsl(142 76% 36% / 0.1)',
+            color: 'hsl(142 76% 36%)',
+          }}
+        >
+          <CheckCircle size={10} />
+          COMPLETED
+        </div>
+      );
+    case 'cancelled':
+      return (
+        <div 
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] tracking-wider"
+          style={{ 
+            backgroundColor: 'hsl(0 84% 60% / 0.1)',
+            color: 'hsl(0 84% 60%)',
+          }}
+        >
+          <XCircle size={10} />
+          CANCELLED
+        </div>
+      );
+    case 'failed':
+      return (
+        <div 
+          className="flex items-center gap-1 px-2 py-0.5 text-[9px] tracking-wider"
+          style={{ 
+            backgroundColor: 'hsl(0 84% 60% / 0.1)',
+            color: 'hsl(0 84% 60%)',
+          }}
+        >
+          <AlertCircle size={10} />
+          FAILED
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+interface CloudFileModalProps {
+  file: UserFile;
+  onClose: () => void;
+}
+
+function CloudFileModal({ file, onClose }: CloudFileModalProps) {
+  const [copied, setCopied] = useState(false);
+  const baseUrl = window.location.origin;
+  const shareLink = `${baseUrl}/?code=${file.code}`;
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.8)' }}
+      onClick={onClose}
+    >
+      <div 
+        className="relative max-w-md w-full p-6"
+        style={{ 
+          backgroundColor: 'hsl(var(--background))',
+          border: '1px solid hsl(var(--border-subtle))',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1 hover-elevate"
+          style={{ color: 'hsl(var(--text-dim))' }}
+          data-testid="button-close-modal"
+        >
+          <X size={16} />
+        </button>
+
+        <h2 
+          className="text-sm tracking-[0.2em] font-medium mb-4"
+          style={{ color: 'hsl(var(--accent))' }}
+        >
+          CLOUD FILE DETAILS
+        </h2>
+
+        <div className="space-y-4">
+          <div>
+            <label 
+              className="text-[10px] tracking-wider mb-1 block"
+              style={{ color: 'hsl(var(--text-dim))' }}
+            >
+              FILE NAME
+            </label>
+            <div 
+              className="text-xs truncate"
+              style={{ color: 'hsl(var(--text-primary))' }}
+            >
+              {file.fileName}
+            </div>
+          </div>
+
+          <div>
+            <label 
+              className="text-[10px] tracking-wider mb-1 block"
+              style={{ color: 'hsl(var(--text-dim))' }}
+            >
+              FILE SIZE
+            </label>
+            <div 
+              className="text-xs"
+              style={{ color: 'hsl(var(--text-primary))' }}
+            >
+              {formatFileSize(file.fileSize)}
+            </div>
+          </div>
+
+          {file.code && (
+            <>
+              <div>
+                <label 
+                  className="text-[10px] tracking-wider mb-1 block"
+                  style={{ color: 'hsl(var(--text-dim))' }}
+                >
+                  SHARE CODE
+                </label>
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="text-lg font-mono tracking-widest"
+                    style={{ color: 'hsl(var(--accent))' }}
+                  >
+                    {file.code}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(file.code!)}
+                    className="p-1 hover-elevate"
+                    style={{ color: 'hsl(var(--text-dim))' }}
+                    data-testid="button-copy-code"
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label 
+                  className="text-[10px] tracking-wider mb-1 block"
+                  style={{ color: 'hsl(var(--text-dim))' }}
+                >
+                  SHARE LINK
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={shareLink}
+                    readOnly
+                    className="flex-1 text-[10px] font-mono p-2"
+                    style={{ 
+                      backgroundColor: 'hsl(var(--surface))',
+                      border: '1px solid hsl(var(--border-subtle))',
+                      color: 'hsl(var(--text-secondary))',
+                    }}
+                  />
+                  <button
+                    onClick={() => copyToClipboard(shareLink)}
+                    className="p-2 hover-elevate"
+                    style={{ 
+                      border: '1px solid hsl(var(--border-subtle))',
+                      color: 'hsl(var(--text-dim))' 
+                    }}
+                    data-testid="button-copy-link"
+                  >
+                    <Copy size={14} />
+                  </button>
+                  <a
+                    href={shareLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 hover-elevate"
+                    style={{ 
+                      border: '1px solid hsl(var(--border-subtle))',
+                      color: 'hsl(var(--text-dim))' 
+                    }}
+                    data-testid="link-open-share"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <label 
+                  className="text-[10px] tracking-wider mb-2 block"
+                  style={{ color: 'hsl(var(--text-dim))' }}
+                >
+                  QR CODE
+                </label>
+                <div 
+                  className="flex justify-center p-4"
+                  style={{ backgroundColor: 'white' }}
+                >
+                  <QRCodeSVG 
+                    value={shareLink} 
+                    size={150}
+                    level="M"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {copied && (
+            <div 
+              className="text-center text-[10px] tracking-wider"
+              style={{ color: 'hsl(142 76% 36%)' }}
+            >
+              COPIED TO CLIPBOARD
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function YourFiles() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const [selectedFile, setSelectedFile] = useState<UserFile | null>(null);
 
   const { data: files, isLoading } = useQuery<UserFile[]>({
     queryKey: ['/api/user/files'],
@@ -74,9 +328,14 @@ export default function YourFiles() {
             {files.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-4 p-3"
+                className={`flex items-center gap-4 p-3 ${isCloudFile(file.transferType) && file.code ? 'cursor-pointer hover-elevate' : ''}`}
                 style={{ 
                   border: '1px solid hsl(var(--border-subtle))',
+                }}
+                onClick={() => {
+                  if (isCloudFile(file.transferType) && file.code) {
+                    setSelectedFile(file);
+                  }
                 }}
                 data-testid={`file-item-${file.id}`}
               >
@@ -84,11 +343,7 @@ export default function YourFiles() {
                   className="flex-shrink-0 p-2"
                   style={{ backgroundColor: 'hsl(var(--surface))' }}
                 >
-                  {file.transferType === 'cloud' ? (
-                    <Cloud size={16} style={{ color: 'hsl(var(--accent))' }} />
-                  ) : (
-                    <FileText size={16} style={{ color: 'hsl(var(--text-dim))' }} />
-                  )}
+                  {getTransferIcon(file.transferType)}
                 </div>
                 
                 <div className="flex-1 min-w-0">
@@ -99,17 +354,23 @@ export default function YourFiles() {
                     {file.fileName}
                   </div>
                   <div 
-                    className="text-[10px] flex items-center gap-2 mt-0.5"
+                    className="text-[10px] flex items-center gap-2 mt-0.5 flex-wrap"
                     style={{ color: 'hsl(var(--text-dim))' }}
                   >
                     <span>{formatFileSize(file.fileSize)}</span>
                     <span style={{ color: 'hsl(var(--border-dim))' }}>|</span>
                     <span>{formatDate(file.createdAt)}</span>
+                    <span style={{ color: 'hsl(var(--border-dim))' }}>|</span>
+                    <span className="uppercase">
+                      {file.transferType === 'cloud_upload' ? 'CLOUD' : 
+                       file.transferType === 'cloud_download' ? 'CLOUD' : 
+                       file.transferType === 'p2p' ? 'P2P' : file.transferType}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {file.direction === 'send' ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {file.direction === 'sent' ? (
                     <div 
                       className="flex items-center gap-1 px-2 py-0.5 text-[9px] tracking-wider"
                       style={{ 
@@ -132,6 +393,8 @@ export default function YourFiles() {
                       RECEIVED
                     </div>
                   )}
+                  
+                  {file.transferType === 'p2p' && (file as any).status && getStatusBadge((file as any).status)}
                   
                   {file.code && (
                     <span 
@@ -172,6 +435,13 @@ export default function YourFiles() {
           </div>
         )}
       </div>
+
+      {selectedFile && (
+        <CloudFileModal 
+          file={selectedFile} 
+          onClose={() => setSelectedFile(null)} 
+        />
+      )}
     </RetroLayout>
   );
 }

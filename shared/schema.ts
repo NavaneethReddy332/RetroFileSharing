@@ -28,6 +28,7 @@ export const userFiles = sqliteTable("user_files", {
   transferType: text("transfer_type").notNull(),
   direction: text("direction").notNull(),
   code: text("code"),
+  status: text("status"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

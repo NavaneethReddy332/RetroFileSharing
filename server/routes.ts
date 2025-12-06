@@ -910,6 +910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                         transferType: 'p2p',
                         direction: 'received',
                         code: room.code,
+                        status: 'completed',
                       });
                     } catch (err) {
                       console.error("Failed to record P2P multi-share receiver file:", err);
@@ -932,6 +933,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     transferType: 'p2p',
                     direction: 'sent',
                     code: room.code,
+                    status: 'completed',
                   });
                 } catch (err) {
                   console.error("Failed to record P2P sender file:", err);
@@ -948,6 +950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     transferType: 'p2p',
                     direction: 'received',
                     code: room.code,
+                    status: 'completed',
                   });
                 } catch (err) {
                   console.error("Failed to record P2P receiver file:", err);
@@ -991,6 +994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   transferType: 'p2p',
                   direction: 'sent',
                   code: room.code,
+                  status: 'completed',
                 });
               } catch (err) {
                 console.error("Failed to record P2P multi-share sender file:", err);
