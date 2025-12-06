@@ -812,35 +812,54 @@ export default function Home() {
     <RetroLayout>
       <div className="h-full flex items-start justify-start gap-6 pl-4">
         <div className="w-72 flex flex-col gap-4">
-          {/* Mode Toggle */}
-          <div className="flex gap-1 p-1 rounded" style={{ background: 'hsl(var(--border-subtle))' }}>
-            <button
-              onClick={() => { setTransferMode('p2p'); resetCloudUpload(); }}
-              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-[10px] font-medium tracking-wider transition-all"
-              style={{ 
-                background: transferMode === 'p2p' ? 'hsl(var(--bg))' : 'transparent',
-                color: transferMode === 'p2p' ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
-                boxShadow: transferMode === 'p2p' ? '0 0 10px hsl(var(--accent) / 0.2)' : 'none'
-              }}
-              data-testid="button-mode-p2p"
-            >
-              <Radio size={12} />
-              P2P
-            </button>
-            <button
-              onClick={() => { setTransferMode('cloud'); resetSender(); }}
-              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded text-[10px] font-medium tracking-wider transition-all"
-              style={{ 
-                background: transferMode === 'cloud' ? 'hsl(var(--bg))' : 'transparent',
-                color: transferMode === 'cloud' ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
-                boxShadow: transferMode === 'cloud' ? '0 0 10px hsl(200 80% 55% / 0.2)' : 'none'
-              }}
-              disabled={!cloudUpload.cloudEnabled}
-              data-testid="button-mode-cloud"
-            >
-              <HardDrive size={12} />
-              CLOUD
-            </button>
+          {/* Mode Toggle - Sleek Design */}
+          <div className="relative p-[2px] overflow-hidden" style={{ 
+            background: 'linear-gradient(135deg, hsl(var(--accent) / 0.3), hsl(var(--border-dim)), hsl(200 80% 55% / 0.3))',
+          }}>
+            <div className="relative flex" style={{ background: 'hsl(var(--surface))' }}>
+              <div 
+                className="absolute top-0 bottom-0 transition-all duration-300 ease-out"
+                style={{ 
+                  left: transferMode === 'p2p' ? '0%' : '50%',
+                  width: '50%',
+                  background: transferMode === 'p2p' 
+                    ? 'linear-gradient(135deg, hsl(var(--accent) / 0.15), hsl(var(--accent) / 0.05))' 
+                    : 'linear-gradient(135deg, hsl(200 80% 55% / 0.15), hsl(200 80% 55% / 0.05))',
+                  borderBottom: transferMode === 'p2p' 
+                    ? '2px solid hsl(var(--accent))' 
+                    : '2px solid hsl(200 80% 55%)',
+                  boxShadow: transferMode === 'p2p'
+                    ? '0 0 20px hsl(var(--accent) / 0.3), inset 0 0 20px hsl(var(--accent) / 0.1)'
+                    : '0 0 20px hsl(200 80% 55% / 0.3), inset 0 0 20px hsl(200 80% 55% / 0.1)',
+                }}
+              />
+              <button
+                onClick={() => { setTransferMode('p2p'); resetCloudUpload(); }}
+                className="relative flex-1 flex items-center justify-center gap-2 py-3 px-4 text-[11px] font-medium tracking-[0.15em] transition-all duration-200"
+                style={{ 
+                  color: transferMode === 'p2p' ? 'hsl(var(--accent))' : 'hsl(var(--text-dim))',
+                  textShadow: transferMode === 'p2p' ? '0 0 10px hsl(var(--accent) / 0.5)' : 'none',
+                }}
+                data-testid="button-mode-p2p"
+              >
+                <Radio size={14} className={transferMode === 'p2p' ? 'animate-pulse' : ''} />
+                P2P
+              </button>
+              <button
+                onClick={() => { setTransferMode('cloud'); resetSender(); }}
+                className="relative flex-1 flex items-center justify-center gap-2 py-3 px-4 text-[11px] font-medium tracking-[0.15em] transition-all duration-200"
+                style={{ 
+                  color: transferMode === 'cloud' ? 'hsl(200 80% 55%)' : 'hsl(var(--text-dim))',
+                  textShadow: transferMode === 'cloud' ? '0 0 10px hsl(200 80% 55% / 0.5)' : 'none',
+                  opacity: cloudUpload.cloudEnabled ? 1 : 0.4,
+                }}
+                disabled={!cloudUpload.cloudEnabled}
+                data-testid="button-mode-cloud"
+              >
+                <HardDrive size={14} className={transferMode === 'cloud' ? 'animate-pulse' : ''} />
+                CLOUD
+              </button>
+            </div>
           </div>
 
           {/* P2P Mode */}
