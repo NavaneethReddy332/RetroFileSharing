@@ -14,6 +14,7 @@ interface ReceiverInfo {
   id: string;
   authenticated: boolean;
   transferComplete: boolean;
+  userId?: number;
 }
 
 interface TransferRoom {
@@ -21,6 +22,7 @@ interface TransferRoom {
   receiver?: WebSocket;
   receivers: Map<string, ReceiverInfo>;
   sessionId: number;
+  code: string;
   fileName: string;
   fileSize: number;
   mimeType: string;
@@ -28,6 +30,8 @@ interface TransferRoom {
   receiverAuthenticated: boolean;
   isMultiShare: boolean;
   maxReceivers: number;
+  senderUserId?: number;
+  receiverUserId?: number;
 }
 
 const rooms = new Map<string, TransferRoom>();
@@ -715,6 +719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               room = {
                 sessionId: session.id,
+                code: code,
                 fileName: session.fileName,
                 fileSize: session.fileSize,
                 mimeType: session.mimeType,
@@ -731,6 +736,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             room.senderAuthenticated = true;
             room.isMultiShare = isMultiShare;
             room.maxReceivers = isMultiShare ? 4 : 1;
+            
+            // Store sender's userId if provided in the message
+            if (typeof message.userId === 'number' && message.userId > 0) {
+              room.senderUserId = message.userId;
+            }
             
             ws.send(JSON.stringify({ type: "joined", role: "sender", isMultiShare }));
 
@@ -771,6 +781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               room = {
                 sessionId: session.id,
+                code: code,
                 fileName: session.fileName,
                 fileSize: session.fileSize,
                 mimeType: session.mimeType,
@@ -795,6 +806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 id: receiverId,
                 authenticated: true,
                 transferComplete: false,
+                userId: (typeof message.userId === 'number' && message.userId > 0) ? message.userId : undefined,
               };
               room.receivers.set(receiverId, receiverInfo);
               
@@ -819,6 +831,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } else {
               room.receiver = ws;
               room.receiverAuthenticated = true;
+              // Store receiver's userId if provided in the message
+              if (typeof message.userId === 'number' && message.userId > 0) {
+                room.receiverUserId = message.userId;
+              }
               ws.send(JSON.stringify({
                 type: "joined",
                 role: "receiver",
@@ -882,11 +898,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (receiverInfo) {
                   receiverInfo.transferComplete = true;
                   sendReceiverCountUpdate(room);
+                  
+                  // Record file for receiver in multi-share P2P transfer
+                  if (receiverInfo.userId) {
+                    try {
+                      await storage.createUserFile({
+                        userId: receiverInfo.userId,
+                        fileName: room.fileName,
+                        fileSize: room.fileSize,
+                        mimeType: room.mimeType,
+                        transferType: 'p2p',
+                        direction: 'received',
+                        code: room.code,
+                      });
+                    } catch (err) {
+                      console.error("Failed to record P2P multi-share receiver file:", err);
+                    }
+                  }
                 }
                 ws.send(JSON.stringify({ type: "transfer-complete" }));
               }
             } else {
               await storage.markSessionCompleted(room.sessionId);
+              
+              // Record files for sender and receiver in single P2P transfer
+              if (room.senderUserId) {
+                try {
+                  await storage.createUserFile({
+                    userId: room.senderUserId,
+                    fileName: room.fileName,
+                    fileSize: room.fileSize,
+                    mimeType: room.mimeType,
+                    transferType: 'p2p',
+                    direction: 'sent',
+                    code: room.code,
+                  });
+                } catch (err) {
+                  console.error("Failed to record P2P sender file:", err);
+                }
+              }
+              
+              if (room.receiverUserId) {
+                try {
+                  await storage.createUserFile({
+                    userId: room.receiverUserId,
+                    fileName: room.fileName,
+                    fileSize: room.fileSize,
+                    mimeType: room.mimeType,
+                    transferType: 'p2p',
+                    direction: 'received',
+                    code: room.code,
+                  });
+                } catch (err) {
+                  console.error("Failed to record P2P receiver file:", err);
+                }
+              }
 
               if (room.sender && room.sender.readyState === WebSocket.OPEN) {
                 room.sender.send(JSON.stringify({ type: "transfer-complete" }));
@@ -912,6 +978,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             await storage.markSessionCompleted(room.sessionId);
+            
+            // Record file for sender in multi-share P2P transfer (if at least one receiver completed)
+            const completedReceivers = Array.from(room.receivers.values()).filter(r => r.transferComplete);
+            if (room.senderUserId && completedReceivers.length > 0) {
+              try {
+                await storage.createUserFile({
+                  userId: room.senderUserId,
+                  fileName: room.fileName,
+                  fileSize: room.fileSize,
+                  mimeType: room.mimeType,
+                  transferType: 'p2p',
+                  direction: 'sent',
+                  code: room.code,
+                });
+              } catch (err) {
+                console.error("Failed to record P2P multi-share sender file:", err);
+              }
+            }
 
             if (room.sender && room.sender.readyState === WebSocket.OPEN) {
               room.sender.send(JSON.stringify({ type: "multi-share-stopped" }));

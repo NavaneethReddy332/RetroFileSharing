@@ -7,6 +7,7 @@ import { useTransferHistory } from "../hooks/useTransferHistory";
 import { SpeedIndicator } from "../components/SpeedIndicator";
 import { SpeedGraph } from "../components/SpeedGraph";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor } from "../lib/utils";
+import { useAuth } from "../contexts/AuthContext";
 
 type ReceiveMode = 'p2p' | 'cloud';
 
@@ -35,6 +36,7 @@ interface CloudFileInfo {
 }
 
 export default function Receive() {
+  const { user } = useAuth();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const initialCode = urlParams.get('code') || '';
@@ -267,7 +269,7 @@ export default function Receive() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode, token: sessionToken }));
+        ws.send(JSON.stringify({ type: 'join-receiver', code: activeCode, token: sessionToken, userId: user?.id }));
         addLog('connected to server', 'info');
       };
 

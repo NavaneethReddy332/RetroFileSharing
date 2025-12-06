@@ -11,6 +11,7 @@ import { SpeedIndicator } from "../components/SpeedIndicator";
 import { SpeedGraph } from "../components/SpeedGraph";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
 import ZipWorker from "../workers/zipWorker?worker";
+import { useAuth } from "../contexts/AuthContext";
 
 type TransferMode = 'p2p' | 'cloud';
 
@@ -22,6 +23,7 @@ interface LogEntry {
 }
 
 export default function Home() {
+  const { user } = useAuth();
   const [transferMode, setTransferMode] = useState<TransferMode>('p2p');
   const [files, setFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
@@ -374,7 +376,7 @@ export default function Home() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join-sender', code: data.code, token: sessionToken, isMultiShare: multiShareMode }));
+        ws.send(JSON.stringify({ type: 'join-sender', code: data.code, token: sessionToken, isMultiShare: multiShareMode, userId: user?.id }));
         addLog('connected to server', 'info');
         if (multiShareMode) {
           multiWebrtc.initMultiSender(ws, fileToSend);
