@@ -8,6 +8,7 @@ import { useMultiWebRTC } from "../hooks/useMultiWebRTC";
 import { useTransferHistory } from "../hooks/useTransferHistory";
 import { useCloudUpload } from "../hooks/useCloudUpload";
 import { SpeedIndicator } from "../components/SpeedIndicator";
+import { SpeedGraph } from "../components/SpeedGraph";
 import { formatFileSize, formatTime, formatTimeRemaining, formatHistoryDate, getLogColor, getStatusColor, validateFiles, MAX_FILE_SIZE_DISPLAY } from "../lib/utils";
 import ZipWorker from "../workers/zipWorker?worker";
 
@@ -1607,48 +1608,56 @@ export default function Home() {
         )}
 
         {code && (status === 'waiting' || status === 'transferring' || status === 'connected' || status === 'complete') && (
-          <div className="w-40">
-            <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
-              QR CODE
-            </div>
-            <div 
-              className="minimal-border p-3 flex flex-col items-center"
-              style={{ background: 'hsl(var(--bg))' }}
-            >
+          <div className="w-72 flex flex-col gap-4">
+            <div>
+              <div className="text-[10px] mb-2 tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>
+                QR CODE
+              </div>
               <div 
-                className="p-2 rounded"
-                style={{ background: '#ffffff' }}
+                className="minimal-border p-3 flex flex-col items-center"
+                style={{ background: 'hsl(var(--bg))' }}
               >
-                <QRCodeSVG 
-                  value={typeof window !== 'undefined' ? `${window.location.origin}/receive?code=${code}` : `/receive?code=${code}`}
-                  size={120}
-                  level="M"
-                  fgColor="#000000"
-                  bgColor="#ffffff"
-                  data-testid="qr-code"
-                />
+                <div 
+                  className="p-2 rounded"
+                  style={{ background: '#ffffff' }}
+                >
+                  <QRCodeSVG 
+                    value={typeof window !== 'undefined' ? `${window.location.origin}/receive?code=${code}` : `/receive?code=${code}`}
+                    size={120}
+                    level="M"
+                    fgColor="#000000"
+                    bgColor="#ffffff"
+                    data-testid="qr-code"
+                  />
+                </div>
+                <div className="text-[9px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
+                  scan to receive
+                </div>
+                <button
+                  onClick={copyLink}
+                  className="mt-3 w-full minimal-btn flex items-center justify-center gap-2 text-[10px]"
+                  data-testid="button-copy-link"
+                >
+                  {linkCopied ? (
+                    <>
+                      <Check size={12} style={{ color: 'hsl(var(--accent))' }} />
+                      <span style={{ color: 'hsl(var(--accent))' }}>copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={12} />
+                      <span>copy link</span>
+                    </>
+                  )}
+                </button>
               </div>
-              <div className="text-[9px] mt-2 text-center" style={{ color: 'hsl(var(--text-dim))' }}>
-                scan to receive
-              </div>
-              <button
-                onClick={copyLink}
-                className="mt-3 w-full minimal-btn flex items-center justify-center gap-2 text-[10px]"
-                data-testid="button-copy-link"
-              >
-                {linkCopied ? (
-                  <>
-                    <Check size={12} style={{ color: 'hsl(var(--accent))' }} />
-                    <span style={{ color: 'hsl(var(--accent))' }}>copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy size={12} />
-                    <span>copy link</span>
-                  </>
-                )}
-              </button>
             </div>
+            
+            <SpeedGraph 
+              currentSpeed={currentSpeed}
+              isTransferring={status === 'transferring' || status === 'connected'}
+              isComplete={status === 'complete'}
+            />
           </div>
         )}
       </div>
