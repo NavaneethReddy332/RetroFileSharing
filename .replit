@@ -20,7 +20,7 @@ localPort = 34043
 externalPort = 8000
 
 [[ports]]
-localPort = 37049
+localPort = 36609
 externalPort = 3001
 
 [[ports]]
@@ -111,3 +111,4 @@ expertMode = true
 [userenv.shared]
 TURSO_DATABASE_URL = "libsql://retrofiles-roninhack.aws-ap-south-1.turso.io"
 TURSO_AUTH_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NjQzOTgyNTEsImlkIjoiY2VjNGY3NzUtNGYzYS00ZGIxLWE1YmQtMTRlZGM5ZTQ5Y2M5IiwicmlkIjoiYzVhN2UyYmEtOGMyNC00NDhkLWI4OGUtOWFjNzFlODZkYzllIn0.x7i7UlXRybtUpngAlLX2VgwWGlZJM9p5E85bbUmZE-8JTLZpK0XqlymIKzdNMMQCLyG_JgGRfM_6ILLukkW2CA"
+VITE_GOOGLE_CLIENT_ID = "146756437664-1gfso2nott8rj9bvs4sk5ce0f8cph7i4.apps.googleusercontent.com"

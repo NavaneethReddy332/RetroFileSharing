@@ -90,9 +90,13 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && googleButtonRef.current && window.google?.accounts?.id) {
-      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      if (clientId) {
+    if (!isOpen || !googleButtonRef.current) return;
+    
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    const initializeGoogleButton = () => {
+      if (window.google?.accounts?.id && googleButtonRef.current) {
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: handleGoogleCallback,
@@ -106,7 +110,19 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           shape: 'rectangular',
           width: 280,
         });
+        return true;
       }
+      return false;
+    };
+
+    if (!initializeGoogleButton()) {
+      const interval = setInterval(() => {
+        if (initializeGoogleButton()) {
+          clearInterval(interval);
+        }
+      }, 100);
+      
+      return () => clearInterval(interval);
     }
   }, [isOpen, handleGoogleCallback]);
 
