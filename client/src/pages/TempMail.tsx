@@ -114,12 +114,15 @@ export default function TempMail() {
     if (hasHtml) {
       const htmlContent = htmlArray.join('');
       
+      const processedHtml = htmlContent.replace(/<a\s+/gi, '<a target="_blank" rel="noopener noreferrer" ');
+      
       const styledHtml = `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <base target="_blank">
           <style>
             body {
               margin: 0;
@@ -133,6 +136,7 @@ export default function TempMail() {
             a {
               color: #00d4aa;
               text-decoration: underline;
+              cursor: pointer;
             }
             a:hover {
               opacity: 0.8;
@@ -153,11 +157,12 @@ export default function TempMail() {
               border-radius: 4px;
               font-weight: 600;
               margin: 8px 0;
+              cursor: pointer;
             }
           </style>
         </head>
         <body>
-          ${htmlContent}
+          ${processedHtml}
         </body>
         </html>
       `;
@@ -171,7 +176,7 @@ export default function TempMail() {
             height: '100%',
             backgroundColor: 'transparent'
           }}
-          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
           title="Email content"
           data-testid="iframe-email-content"
         />
