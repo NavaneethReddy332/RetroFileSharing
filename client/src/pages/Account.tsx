@@ -64,6 +64,10 @@ export default function Account() {
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [highlightStyle, setHighlightStyle] = useState<{top: number; height: number; opacity: number}>({ top: 0, height: 0, opacity: 0 });
   const navContainerRef = useRef<HTMLDivElement>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [showDeletePassword, setShowDeletePassword] = useState(false);
 
   const handleNavMouseEnter = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     const target = e.currentTarget;
@@ -153,6 +157,32 @@ export default function Account() {
       toast({ title: 'Failed to revoke session', description: error.message, variant: 'destructive' });
     },
   });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (password: string) => {
+      const response = await apiRequest('DELETE', '/api/account', { password });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Account deleted successfully' });
+      navigate('/');
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to delete account', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleDeleteAccount = () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast({ title: 'Please type DELETE to confirm', variant: 'destructive' });
+      return;
+    }
+    if (!deletePassword) {
+      toast({ title: 'Please enter your password', variant: 'destructive' });
+      return;
+    }
+    deleteAccountMutation.mutate(deletePassword);
+  };
 
   const handleSaveProfile = () => {
     if (!displayName.trim() || !email.trim()) {
@@ -715,6 +745,7 @@ export default function Account() {
                       Permanently delete your account and all associated data. This action cannot be undone.
                     </p>
                     <button
+                      onClick={() => setShowDeleteModal(true)}
                       className="minimal-btn flex items-center gap-1.5"
                       style={{ 
                         color: 'hsl(0, 65%, 55%)',
@@ -859,6 +890,137 @@ export default function Account() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Delete Account Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            className="fixed inset-0 flex items-center justify-center z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div 
+              className="absolute inset-0"
+              style={{ backgroundColor: 'hsl(var(--background) / 0.8)', backdropFilter: 'blur(4px)' }}
+              onClick={() => {
+                setShowDeleteModal(false);
+                setDeleteConfirmText('');
+                setDeletePassword('');
+              }}
+            />
+            <motion.div
+              className="relative w-full max-w-md mx-4 p-6"
+              style={{ 
+                backgroundColor: 'hsl(var(--panel))',
+                border: '1px solid hsl(0, 65%, 55% / 0.3)'
+              }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div 
+                  className="w-10 h-10 flex items-center justify-center"
+                  style={{ 
+                    backgroundColor: 'hsl(0, 65%, 55% / 0.1)',
+                    border: '1px solid hsl(0, 65%, 55% / 0.3)'
+                  }}
+                >
+                  <AlertTriangle size={20} style={{ color: 'hsl(0, 65%, 55%)' }} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium" style={{ color: 'hsl(0, 65%, 55%)' }}>
+                    Delete Account
+                  </h3>
+                  <p className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                    This action is permanent
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-[11px]" style={{ color: 'hsl(var(--text-secondary))' }}>
+                  Are you sure you want to delete your account? This will permanently delete all your data including transfer history and cloud files. You will not be able to register with the same email for 5 days.
+                </p>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'hsl(var(--text-dim))' }}>
+                    Enter your password to confirm
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showDeletePassword ? 'text' : 'password'}
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      placeholder="Your password"
+                      className="minimal-input w-full pr-8"
+                      style={{ borderColor: 'hsl(0, 65%, 55% / 0.3)' }}
+                      data-testid="input-delete-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDeletePassword(!showDeletePassword)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1"
+                      style={{ color: 'hsl(var(--text-dim))' }}
+                      data-testid="button-toggle-delete-password"
+                    >
+                      {showDeletePassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'hsl(var(--text-dim))' }}>
+                    Type DELETE to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value.toUpperCase())}
+                    placeholder="DELETE"
+                    className="minimal-input w-full"
+                    style={{ borderColor: 'hsl(0, 65%, 55% / 0.3)' }}
+                    data-testid="input-delete-confirm"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setDeleteConfirmText('');
+                      setDeletePassword('');
+                    }}
+                    className="minimal-btn flex-1"
+                    data-testid="button-cancel-delete"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmText !== 'DELETE' || !deletePassword || deleteAccountMutation.isPending}
+                    className="minimal-btn flex-1 flex items-center justify-center gap-1.5"
+                    style={{ 
+                      color: deleteConfirmText === 'DELETE' && deletePassword ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))',
+                      backgroundColor: deleteConfirmText === 'DELETE' && deletePassword ? 'hsl(0, 65%, 55% / 0.2)' : 'transparent',
+                      borderColor: 'hsl(0, 65%, 55% / 0.5)',
+                      opacity: deleteConfirmText !== 'DELETE' || !deletePassword ? 0.5 : 1,
+                      cursor: deleteConfirmText !== 'DELETE' || !deletePassword ? 'not-allowed' : 'pointer'
+                    }}
+                    data-testid="button-confirm-delete"
+                  >
+                    <Trash2 size={12} />
+                    {deleteAccountMutation.isPending ? 'Deleting...' : 'Delete Account'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

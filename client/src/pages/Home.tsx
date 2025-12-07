@@ -65,6 +65,7 @@ export default function Home() {
   const [cloudFileName, setCloudFileName] = useState<string>('');
   const [cloudCode, setCloudCode] = useState<string>('');
   const [cloudFiles, setCloudFiles] = useState<File[]>([]);
+  const [showCloudLoginModal, setShowCloudLoginModal] = useState(false);
   const [, navigate] = useLocation();
   const statusRef = useRef(status);
   const { history, addRecord, clearHistory, getRecentSends } = useTransferHistory();
@@ -827,7 +828,15 @@ export default function Home() {
               P2P
             </button>
             <button
-              onClick={() => { setTransferMode('cloud'); resetSender(); }}
+              onClick={() => {
+                if (!cloudUpload.cloudEnabled) return;
+                if (!user) {
+                  setShowCloudLoginModal(true);
+                  return;
+                }
+                setTransferMode('cloud');
+                resetSender();
+              }}
               className="flex-1 py-2 text-[10px] tracking-[0.2em] transition-all duration-200"
               style={{ 
                 color: transferMode === 'cloud' ? 'hsl(var(--text-primary))' : 'hsl(var(--text-dim))',
@@ -835,7 +844,6 @@ export default function Home() {
                 marginBottom: '-1px',
                 opacity: cloudUpload.cloudEnabled ? 1 : 0.3,
               }}
-              disabled={!cloudUpload.cloudEnabled}
               data-testid="button-mode-cloud"
             >
               CLOUD
@@ -1679,6 +1687,55 @@ export default function Home() {
                 >
                   <Zap size={10} />
                   enable
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloudLoginModal && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-50"
+          style={{ background: 'rgba(0, 0, 0, 0.8)' }}
+          onClick={() => setShowCloudLoginModal(false)}
+        >
+          <div 
+            className="p-6 minimal-border max-w-xs"
+            style={{ 
+              background: 'hsl(var(--bg))',
+              borderColor: 'hsl(var(--accent) / 0.5)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center gap-4">
+              <Cloud size={24} style={{ color: 'hsl(var(--accent))' }} />
+              <div className="text-center">
+                <div className="text-xs font-medium mb-1" style={{ color: 'hsl(var(--text-primary))' }}>
+                  Login Required
+                </div>
+                <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>
+                  Please login to use cloud storage
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCloudLoginModal(false)}
+                  className="minimal-btn text-[10px] px-4 py-1.5"
+                  data-testid="button-cancel-cloud-login"
+                >
+                  cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCloudLoginModal(false);
+                    const event = new CustomEvent('open-auth-modal', { detail: { mode: 'login' } });
+                    window.dispatchEvent(event);
+                  }}
+                  className="minimal-btn minimal-btn-accent text-[10px] px-4 py-1.5"
+                  data-testid="button-cloud-login"
+                >
+                  login
                 </button>
               </div>
             </div>

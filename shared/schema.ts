@@ -82,3 +82,17 @@ export const insertCloudUploadSchema = createInsertSchema(cloudUploads).omit({
 
 export type InsertCloudUpload = z.infer<typeof insertCloudUploadSchema>;
 export type CloudUpload = typeof cloudUploads.$inferSelect;
+
+export const deletedEmails = sqliteTable("deleted_emails", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull(),
+  deletedAt: text("deleted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const insertDeletedEmailSchema = createInsertSchema(deletedEmails).omit({
+  id: true,
+  deletedAt: true,
+});
+
+export type InsertDeletedEmail = z.infer<typeof insertDeletedEmailSchema>;
+export type DeletedEmail = typeof deletedEmails.$inferSelect;

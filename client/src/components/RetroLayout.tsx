@@ -85,11 +85,17 @@ export function RetroLayout({ children }: RetroLayoutProps) {
       }
     };
 
+    const handleOpenAuthModal = () => {
+      setIsAuthModalOpen(true);
+    };
+
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('open-auth-modal', handleOpenAuthModal);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('open-auth-modal', handleOpenAuthModal);
       clearCloseTimeout();
     };
   }, [isSidebarOpen, isUserMenuOpen, clearCloseTimeout]);

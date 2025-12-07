@@ -1,6 +1,6 @@
-import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads, type User, type InsertUser, users, type UserFile, type InsertUserFile, userFiles } from "@shared/schema";
+import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads, type User, type InsertUser, users, type UserFile, type InsertUserFile, userFiles, deletedEmails } from "@shared/schema";
 import { db } from "./db";
-import { eq, lte, and, ne, lt, desc } from "drizzle-orm";
+import { eq, lte, and, ne, lt, desc, gt } from "drizzle-orm";
 import { generateSecureCode, generateCloudCode } from "./lib/security";
 
 export interface IStorage {
@@ -28,6 +28,11 @@ export interface IStorage {
 
   createUserFile(file: InsertUserFile): Promise<UserFile>;
   getUserFiles(userId: number, limit?: number): Promise<UserFile[]>;
+  
+  deleteUser(id: number): Promise<void>;
+  addDeletedEmail(email: string): Promise<void>;
+  isEmailBlocked(email: string): Promise<boolean>;
+  cleanupOldDeletedEmails(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -238,6 +243,46 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(userFiles.createdAt))
       .limit(limit);
     return result;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(userFiles).where(eq(userFiles.userId, id));
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  async addDeletedEmail(email: string): Promise<void> {
+    await db.insert(deletedEmails).values({
+      email: email.toLowerCase(),
+    });
+  }
+
+  async isEmailBlocked(email: string): Promise<boolean> {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+    const cutoffStr = fiveDaysAgo.toISOString();
+    
+    const result = await db.select().from(deletedEmails)
+      .where(
+        and(
+          eq(deletedEmails.email, email.toLowerCase()),
+          gt(deletedEmails.deletedAt, cutoffStr)
+        )
+      )
+      .limit(1);
+    
+    return result.length > 0;
+  }
+
+  async cleanupOldDeletedEmails(): Promise<void> {
+    try {
+      const fiveDaysAgo = new Date();
+      fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+      const cutoffStr = fiveDaysAgo.toISOString();
+      
+      await db.delete(deletedEmails).where(lt(deletedEmails.deletedAt, cutoffStr));
+    } catch (error) {
+      console.error('[CLEANUP] Error cleaning up old deleted emails:', error);
+    }
   }
 }
 

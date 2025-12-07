@@ -522,6 +522,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const normalizedEmail = email.toLowerCase();
       const normalizedUsername = username.toLowerCase();
 
+      const isBlocked = await storage.isEmailBlocked(normalizedEmail);
+      if (isBlocked) {
+        return res.status(400).json({ error: "This email cannot be used for registration at this time. Please try again in a few days." });
+      }
+
       const existingEmail = await storage.getUserByEmail(normalizedEmail);
       if (existingEmail) {
         return res.status(400).json({ error: "Email already registered" });
@@ -706,6 +711,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Password change error:", error);
       res.status(500).json({ error: "Failed to change password" });
+    }
+  });
+
+  app.delete("/api/account", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({ error: "Password confirmation is required" });
+      }
+
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const validPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!validPassword) {
+        return res.status(400).json({ error: "Incorrect password" });
+      }
+
+      await storage.addDeletedEmail(user.email);
+      await storage.deleteUser(userId);
+
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error during account deletion:", err);
+        }
+        res.clearCookie('connect.sid');
+        res.json({ success: true });
+      });
+    } catch (error) {
+      console.error("Account deletion error:", error);
+      res.status(500).json({ error: "Failed to delete account" });
     }
   });
 

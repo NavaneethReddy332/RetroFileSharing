@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, User, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react';
+import { X, User, Mail, Lock, AlertCircle, Loader2, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -15,7 +15,15 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const { login, register } = useAuth();
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowSuccess(false);
+      setError('');
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,12 +36,17 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       } else {
         await register(username, email, password);
       }
-      onClose();
-      setEmail('');
-      setPassword('');
-      setUsername('');
+      setIsLoading(false);
+      setShowSuccess(true);
+      setTimeout(() => {
+        onClose();
+        setEmail('');
+        setPassword('');
+        setUsername('');
+        setShowSuccess(false);
+      }, 1500);
     } catch (err: any) {
-      // Handle Response objects from apiRequest
+      setIsLoading(false);
       if (err instanceof Response) {
         try {
           const errorData = await err.json();
@@ -51,8 +64,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       } else {
         setError(err?.message || 'An error occurred');
       }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -85,6 +96,57 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
           >
+        {showSuccess ? (
+          <div className="flex flex-col items-center justify-center py-8">
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ 
+                type: "spring",
+                stiffness: 260,
+                damping: 20,
+                duration: 0.5 
+              }}
+              className="w-16 h-16 flex items-center justify-center rounded-full mb-4"
+              style={{ 
+                backgroundColor: 'hsl(var(--accent) / 0.15)',
+                border: '2px solid hsl(var(--accent))'
+              }}
+            >
+              <motion.div
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
+              >
+                <Check 
+                  size={32} 
+                  strokeWidth={3}
+                  style={{ color: 'hsl(var(--accent))' }} 
+                />
+              </motion.div>
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.3 }}
+              className="text-center"
+            >
+              <div 
+                className="text-sm font-medium tracking-wider"
+                style={{ color: 'hsl(var(--accent))' }}
+              >
+                {mode === 'login' ? 'SIGNED IN' : 'ACCOUNT CREATED'}
+              </div>
+              <div 
+                className="text-[10px] mt-1"
+                style={{ color: 'hsl(var(--text-dim))' }}
+              >
+                {mode === 'login' ? 'Welcome back!' : 'Welcome to AeroSend!'}
+              </div>
+            </motion.div>
+          </div>
+        ) : (
+          <>
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 transition-colors"
@@ -262,6 +324,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </span>
           </button>
         </div>
+          </>
+        )}
           </motion.div>
         </motion.div>
       )}
