@@ -28,21 +28,23 @@ function getIceServers(): RTCIceServer[] {
   const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
 
   if (turnUrl && turnUsername && turnCredential) {
+    const cleanUrl = turnUrl.split('?')[0].replace(/:\d+$/, '');
     servers.push(
-      { urls: turnUrl, username: turnUsername, credential: turnCredential },
-      { urls: turnUrl.replace('turn:', 'turn:') + '?transport=tcp', username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:3478?transport=udp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:443?transport=udp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:80`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:80?transport=tcp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:443?transport=tcp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl.replace('turn:', 'turns:')}:443?transport=tcp`, username: turnUsername, credential: turnCredential },
     );
-    if (turnUrl.includes(':443')) {
-      servers.push({ urls: turnUrl.replace('turn:', 'turns:') + '?transport=tcp', username: turnUsername, credential: turnCredential });
-    }
   }
 
   return servers;
 }
 
-const CHUNK_SIZE = 64 * 1024;
-const LOW_BUFFER_THRESHOLD = 1 * 1024 * 1024;
-const HIGH_BUFFER_THRESHOLD = 4 * 1024 * 1024;
+const BASE_CHUNK_SIZE = 64 * 1024;
+const LOW_BUFFER_THRESHOLD = 256 * 1024;
+const HIGH_BUFFER_THRESHOLD = 1 * 1024 * 1024;
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
@@ -95,7 +97,7 @@ export function useMultiWebRTC(config: MultiWebRTCConfig) {
   }, [log]);
 
   const streamFileToReceiver = useCallback(async (receiverId: string, channel: RTCDataChannel, file: File) => {
-    const chunkSize = CHUNK_SIZE;
+    const chunkSize = BASE_CHUNK_SIZE;
     const totalSize = file.size;
     let offset = 0;
     const startTime = Date.now();

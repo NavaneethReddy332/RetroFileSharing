@@ -23,23 +23,26 @@ function getIceServers(): RTCIceServer[] {
   const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
 
   if (turnUrl && turnUsername && turnCredential) {
+    const cleanUrl = turnUrl.split('?')[0].replace(/:\d+$/, '');
     servers.push(
-      { urls: turnUrl, username: turnUsername, credential: turnCredential },
-      { urls: turnUrl.replace('turn:', 'turn:') + '?transport=tcp', username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:3478?transport=udp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:443?transport=udp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:80`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:80?transport=tcp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl}:443?transport=tcp`, username: turnUsername, credential: turnCredential },
+      { urls: `${cleanUrl.replace('turn:', 'turns:')}:443?transport=tcp`, username: turnUsername, credential: turnCredential },
     );
-    if (turnUrl.includes(':443')) {
-      servers.push({ urls: turnUrl.replace('turn:', 'turns:') + '?transport=tcp', username: turnUsername, credential: turnCredential });
-    }
   }
 
   return servers;
 }
 
-const CHUNK_SIZE = 64 * 1024;
-const FAST_CHUNK_SIZE = 256 * 1024;
-const MAX_BUFFER_SIZE = 16 * 1024 * 1024;
-const LOW_BUFFER_THRESHOLD = 1 * 1024 * 1024;
-const HIGH_BUFFER_THRESHOLD = 4 * 1024 * 1024;
+const MIN_CHUNK_SIZE = 16 * 1024;
+const BASE_CHUNK_SIZE = 64 * 1024;
+const MAX_CHUNK_SIZE = 256 * 1024;
+const LOW_BUFFER_THRESHOLD = 256 * 1024;
+const HIGH_BUFFER_THRESHOLD = 1 * 1024 * 1024;
+const TARGET_BUFFER = 512 * 1024;
 const HEADER_SIZE = 12;
 const MAX_RETRANSMIT_ROUNDS = 5;
 const RETRANSMIT_TIMEOUT = 10000;
@@ -202,9 +205,8 @@ export function useWebRTC(config: WebRTCConfig) {
   };
 
   const streamFile = useCallback(async (channel: RTCDataChannel, file: File, fastMode: boolean, controlChannel?: RTCDataChannel) => {
-    const chunkSize = fastMode ? FAST_CHUNK_SIZE : CHUNK_SIZE;
+    let currentChunkSize = BASE_CHUNK_SIZE;
     const totalSize = file.size;
-    const totalChunks = Math.ceil(totalSize / chunkSize);
     let offset = 0;
     let chunkIndex = 0;
     const startTime = Date.now();
@@ -212,23 +214,26 @@ export function useWebRTC(config: WebRTCConfig) {
     let lastSpeedUpdate = startTime;
     let bytesThisSecond = 0;
     let currentSpeed = 0;
+    let adaptiveChunkSize = BASE_CHUNK_SIZE;
 
     chunkCacheRef.current.clear();
 
     channel.bufferedAmountLowThreshold = LOW_BUFFER_THRESHOLD;
 
+    const estimatedTotalChunks = Math.ceil(totalSize / BASE_CHUNK_SIZE);
     channel.send(JSON.stringify({
       type: 'file-info',
       name: file.name,
       size: file.size,
       mimeType: file.type || 'application/octet-stream',
-      totalChunks,
-      chunkSize,
-      fastMode
+      totalChunks: estimatedTotalChunks,
+      chunkSize: BASE_CHUNK_SIZE,
+      fastMode,
+      adaptiveMode: true
     }));
 
     if (fastMode) {
-      log(`FAST MODE: streaming ${formatSize(totalSize)}...`, 'system');
+      log(`TURBO MODE: streaming ${formatSize(totalSize)}...`, 'system');
     } else {
       log(`streaming ${formatSize(totalSize)}...`, 'system');
     }
@@ -260,7 +265,22 @@ export function useWebRTC(config: WebRTCConfig) {
       return await blob.arrayBuffer();
     };
 
-    const BATCH_SIZE = fastMode ? 16 : 8;
+    const getAdaptiveChunkSize = (): number => {
+      const buffered = channel.bufferedAmount;
+      if (buffered < LOW_BUFFER_THRESHOLD) {
+        adaptiveChunkSize = Math.min(adaptiveChunkSize * 1.5, MAX_CHUNK_SIZE);
+      } else if (buffered > TARGET_BUFFER) {
+        adaptiveChunkSize = Math.max(adaptiveChunkSize * 0.7, MIN_CHUNK_SIZE);
+      }
+      return Math.floor(adaptiveChunkSize);
+    };
+
+    const getAdaptiveBatchSize = (): number => {
+      const buffered = channel.bufferedAmount;
+      if (buffered < LOW_BUFFER_THRESHOLD) return 8;
+      if (buffered < TARGET_BUFFER) return 4;
+      return 2;
+    };
     
     while (offset < totalSize) {
       if (isCancelledRef.current) {
@@ -277,14 +297,16 @@ export function useWebRTC(config: WebRTCConfig) {
         await waitForBuffer();
       }
 
-      const chunksToSend = Math.min(BATCH_SIZE, Math.ceil((totalSize - offset) / chunkSize));
+      currentChunkSize = getAdaptiveChunkSize();
+      const batchSize = getAdaptiveBatchSize();
+      const chunksToSend = Math.min(batchSize, Math.ceil((totalSize - offset) / currentChunkSize));
       const readPromises: Promise<ArrayBuffer>[] = [];
       const chunkRanges: { start: number; end: number; index: number }[] = [];
       
       for (let i = 0; i < chunksToSend; i++) {
-        const chunkStart = offset + (i * chunkSize);
+        const chunkStart = offset + (i * currentChunkSize);
         if (chunkStart >= totalSize) break;
-        const chunkEnd = Math.min(chunkStart + chunkSize, totalSize);
+        const chunkEnd = Math.min(chunkStart + currentChunkSize, totalSize);
         chunkRanges.push({ start: chunkStart, end: chunkEnd, index: chunkIndex + i });
         readPromises.push(readChunkFast(chunkStart, chunkEnd));
       }
@@ -327,7 +349,7 @@ export function useWebRTC(config: WebRTCConfig) {
       }
     }
 
-    channel.send(JSON.stringify({ type: 'transfer-complete', totalChunks }));
+    channel.send(JSON.stringify({ type: 'transfer-complete', totalChunks: chunkIndex }));
 
     if (fastMode && controlChannel) {
       let retransmitRound = 0;
