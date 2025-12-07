@@ -27,6 +27,21 @@ import { format } from 'date-fns';
 
 const TEMP_MAIL_STORAGE_KEY = 'aerosend_temp_mail';
 
+const THEME = {
+  primary: '#1A73E8',
+  primaryLight: 'rgba(26, 115, 232, 0.1)',
+  primaryBorder: 'rgba(26, 115, 232, 0.3)',
+  accent: '#00E5FF',
+  accentLight: 'rgba(0, 229, 255, 0.1)',
+  accentBorder: 'rgba(0, 229, 255, 0.3)',
+  surface: '#0a0f1a',
+  surfaceElevated: '#111827',
+  border: 'rgba(0, 229, 255, 0.15)',
+  textPrimary: '#ffffff',
+  textSecondary: 'rgba(255, 255, 255, 0.8)',
+  textDim: 'rgba(255, 255, 255, 0.5)',
+};
+
 interface Attachment {
   id: string;
   filename: string;
@@ -268,26 +283,27 @@ export default function TempMail() {
     return (
       <div 
         className="fixed inset-0 z-50 flex items-center justify-center p-4"
-        style={{ backgroundColor: 'hsl(var(--surface) / 0.9)' }}
+        style={{ backgroundColor: 'rgba(10, 15, 26, 0.95)' }}
         onClick={() => setSelectedSavedEmail(null)}
       >
         <div 
           className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
           style={{ 
-            backgroundColor: 'hsl(var(--surface-elevated))',
-            border: '1px solid hsl(var(--border-subtle))'
+            backgroundColor: THEME.surfaceElevated,
+            border: `1px solid ${THEME.border}`,
+            boxShadow: `0 0 40px ${THEME.primaryLight}`
           }}
           onClick={(e) => e.stopPropagation()}
           data-testid="modal-saved-email-detail"
         >
           <div 
             className="flex items-center justify-between gap-4 p-4 border-b"
-            style={{ borderColor: 'hsl(var(--border-subtle))' }}
+            style={{ borderColor: THEME.border }}
           >
             <button
               onClick={() => setSelectedSavedEmail(null)}
               className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-              style={{ color: 'hsl(var(--text-dim))' }}
+              style={{ color: THEME.textDim }}
               data-testid="button-close-saved-modal"
             >
               <ArrowLeft size={14} />
@@ -310,29 +326,29 @@ export default function TempMail() {
             </button>
           </div>
           
-          <div className="p-4 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+          <div className="p-4 border-b" style={{ borderColor: THEME.border }}>
             <h2 
               className="text-sm font-medium mb-3"
-              style={{ color: 'hsl(var(--text-primary))' }}
+              style={{ color: THEME.textPrimary }}
             >
               {selectedSavedEmail.subject || '(No subject)'}
             </h2>
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-xs">
-                <span style={{ color: 'hsl(var(--text-dim))' }}>From:</span>
-                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                <span style={{ color: THEME.textDim }}>From:</span>
+                <span style={{ color: THEME.textSecondary }}>
                   {selectedSavedEmail.fromName} &lt;{selectedSavedEmail.fromAddress}&gt;
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span style={{ color: 'hsl(var(--text-dim))' }}>To:</span>
-                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                <span style={{ color: THEME.textDim }}>To:</span>
+                <span style={{ color: THEME.textSecondary }}>
                   {selectedSavedEmail.toAddress}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span style={{ color: 'hsl(var(--text-dim))' }}>Saved:</span>
-                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                <span style={{ color: THEME.textDim }}>Saved:</span>
+                <span style={{ color: THEME.textSecondary }}>
                   {formatDate(selectedSavedEmail.savedAt)}
                 </span>
               </div>
@@ -353,13 +369,13 @@ export default function TempMail() {
         <div className="mb-6">
           <h1 
             className="text-lg font-medium mb-1"
-            style={{ color: 'hsl(var(--text-primary))' }}
+            style={{ color: THEME.accent, textShadow: `0 0 15px ${THEME.accentLight}` }}
           >
             Temp Mail
           </h1>
           <p 
             className="text-xs"
-            style={{ color: 'hsl(var(--text-dim))' }}
+            style={{ color: THEME.textDim }}
           >
             Generate a temporary email address. Emails are deleted after 1 hour.
           </p>
@@ -393,9 +409,9 @@ export default function TempMail() {
               onClick={() => setShowSavedEmails(!showSavedEmails)}
               className="flex items-center gap-2 px-3 py-2 text-xs transition-all w-full"
               style={{ 
-                border: '1px solid hsl(var(--border-subtle))',
-                backgroundColor: showSavedEmails ? 'hsl(var(--surface-elevated))' : 'transparent',
-                color: 'hsl(var(--text-secondary))'
+                border: `1px solid ${showSavedEmails ? THEME.accent : THEME.border}`,
+                backgroundColor: showSavedEmails ? THEME.surfaceElevated : 'transparent',
+                color: showSavedEmails ? THEME.accent : THEME.textSecondary
               }}
               data-testid="button-toggle-saved"
             >
@@ -411,41 +427,41 @@ export default function TempMail() {
               <div 
                 className="mt-2 divide-y"
                 style={{ 
-                  border: '1px solid hsl(var(--border-subtle))',
-                  borderColor: 'hsl(var(--border-subtle))'
+                  border: `1px solid ${THEME.border}`,
+                  borderColor: THEME.border
                 }}
               >
                 {savedEmails.map((email) => (
                   <div
                     key={email.id}
-                    className="flex items-start gap-3 p-3 transition-colors cursor-pointer"
-                    style={{ backgroundColor: 'hsl(var(--surface-elevated))' }}
+                    className="flex items-start gap-3 p-3 transition-colors cursor-pointer hover:opacity-90"
+                    style={{ backgroundColor: THEME.surfaceElevated }}
                     onClick={() => setSelectedSavedEmail(email)}
                     data-testid={`saved-email-item-${email.id}`}
                   >
                     <Save 
                       size={14} 
                       className="mt-0.5 flex-shrink-0"
-                      style={{ color: 'hsl(var(--accent))' }}
+                      style={{ color: THEME.primary }}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span 
                           className="text-xs font-medium truncate"
-                          style={{ color: 'hsl(var(--text-primary))' }}
+                          style={{ color: THEME.textPrimary }}
                         >
                           {email.fromName || email.fromAddress}
                         </span>
                         <span 
                           className="text-[10px] flex-shrink-0"
-                          style={{ color: 'hsl(var(--text-dim))' }}
+                          style={{ color: THEME.textDim }}
                         >
                           {formatDate(email.savedAt)}
                         </span>
                       </div>
                       <div 
                         className="text-xs truncate"
-                        style={{ color: 'hsl(var(--text-secondary))' }}
+                        style={{ color: THEME.textSecondary }}
                       >
                         {email.subject || '(No subject)'}
                       </div>
@@ -461,24 +477,25 @@ export default function TempMail() {
           <div 
             className="flex flex-col items-center justify-center p-12 text-center"
             style={{ 
-              border: '1px dashed hsl(var(--border-subtle))',
-              backgroundColor: 'hsl(var(--surface-elevated))'
+              border: `1px dashed ${THEME.border}`,
+              backgroundColor: THEME.surfaceElevated,
+              boxShadow: `0 0 30px ${THEME.accentLight}`
             }}
           >
             <Mail 
               size={48} 
               className="mb-4"
-              style={{ color: 'hsl(var(--accent))' }}
+              style={{ color: THEME.accent, filter: `drop-shadow(0 0 10px ${THEME.accent})` }}
             />
             <h2 
               className="text-sm font-medium mb-2"
-              style={{ color: 'hsl(var(--text-primary))' }}
+              style={{ color: THEME.textPrimary }}
             >
               Generate Temporary Email
             </h2>
             <p 
               className="text-xs mb-4 max-w-sm"
-              style={{ color: 'hsl(var(--text-dim))' }}
+              style={{ color: THEME.textDim }}
             >
               Create a disposable email address to receive emails. 
               Perfect for signups, verifications, and testing.
@@ -490,9 +507,9 @@ export default function TempMail() {
                   onClick={() => setShowDomainDropdown(!showDomainDropdown)}
                   className="flex items-center gap-2 px-3 py-2 text-xs"
                   style={{ 
-                    border: '1px solid hsl(var(--border-subtle))',
-                    backgroundColor: 'hsl(var(--surface))',
-                    color: 'hsl(var(--text-secondary))'
+                    border: `1px solid ${THEME.border}`,
+                    backgroundColor: THEME.surface,
+                    color: THEME.textSecondary
                   }}
                   data-testid="button-domain-dropdown"
                 >
@@ -504,8 +521,8 @@ export default function TempMail() {
                   <div 
                     className="absolute top-full left-0 mt-1 w-full z-10"
                     style={{ 
-                      border: '1px solid hsl(var(--border-subtle))',
-                      backgroundColor: 'hsl(var(--surface-elevated))'
+                      border: `1px solid ${THEME.border}`,
+                      backgroundColor: THEME.surfaceElevated
                     }}
                   >
                     {domains.map((domain) => (
@@ -518,8 +535,8 @@ export default function TempMail() {
                         className="w-full px-3 py-2 text-xs text-left transition-colors hover:opacity-70"
                         style={{ 
                           color: domain.domain === selectedDomain 
-                            ? 'hsl(var(--accent))' 
-                            : 'hsl(var(--text-secondary))'
+                            ? THEME.accent 
+                            : THEME.textSecondary
                         }}
                         data-testid={`domain-option-${domain.id}`}
                       >
@@ -534,11 +551,13 @@ export default function TempMail() {
             <button
               onClick={handleCreateEmail}
               disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2 text-xs font-medium transition-all"
+              className="flex items-center gap-2 px-6 py-3 text-xs font-medium transition-all"
               style={{ 
-                backgroundColor: 'hsl(var(--accent))',
-                color: 'hsl(var(--surface))',
+                backgroundColor: THEME.primary,
+                color: '#ffffff',
                 opacity: isLoading ? 0.7 : 1,
+                boxShadow: `0 0 20px ${THEME.primaryLight}`,
+                border: `1px solid ${THEME.primaryBorder}`
               }}
               data-testid="button-generate-email"
             >
@@ -555,21 +574,22 @@ export default function TempMail() {
             <div 
               className="p-4"
               style={{ 
-                border: '1px solid hsl(var(--border-subtle))',
-                backgroundColor: 'hsl(var(--surface-elevated))'
+                border: `1px solid ${THEME.border}`,
+                backgroundColor: THEME.surfaceElevated,
+                boxShadow: `0 0 20px ${THEME.accentLight}`
               }}
             >
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div 
                     className="text-[10px] tracking-wider mb-1"
-                    style={{ color: 'hsl(var(--text-dim))' }}
+                    style={{ color: THEME.textDim }}
                   >
                     YOUR TEMPORARY EMAIL
                   </div>
                   <div 
                     className="text-sm font-mono truncate"
-                    style={{ color: 'hsl(var(--accent))' }}
+                    style={{ color: THEME.accent, textShadow: `0 0 10px ${THEME.accentLight}` }}
                     data-testid="text-email-address"
                   >
                     {account.address}
@@ -604,8 +624,9 @@ export default function TempMail() {
                     onClick={handleCopyEmail}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-wider transition-all"
                     style={{ 
-                      border: '1px solid hsl(var(--border-subtle))',
-                      color: copied ? 'hsl(var(--success))' : 'hsl(var(--text-secondary))'
+                      border: `1px solid ${copied ? THEME.accent : THEME.border}`,
+                      color: copied ? THEME.accent : THEME.textSecondary,
+                      backgroundColor: copied ? THEME.accentLight : 'transparent'
                     }}
                     data-testid="button-copy-email"
                   >
@@ -616,8 +637,8 @@ export default function TempMail() {
                     onClick={handleNewEmailWithClear}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-wider transition-all"
                     style={{ 
-                      border: '1px solid hsl(var(--border-subtle))',
-                      color: 'hsl(var(--text-dim))'
+                      border: `1px solid ${THEME.primaryBorder}`,
+                      color: THEME.primary
                     }}
                     data-testid="button-new-email"
                   >
@@ -630,10 +651,10 @@ export default function TempMail() {
 
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Inbox size={14} style={{ color: 'hsl(var(--text-dim))' }} />
+                <Inbox size={14} style={{ color: THEME.accent }} />
                 <span 
                   className="text-xs"
-                  style={{ color: 'hsl(var(--text-secondary))' }}
+                  style={{ color: THEME.textSecondary }}
                 >
                   Inbox ({messages.length})
                 </span>
@@ -643,9 +664,9 @@ export default function TempMail() {
                   onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
                   className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
                   style={{ 
-                    border: '1px solid hsl(var(--border-subtle))',
-                    color: autoRefreshEnabled ? 'hsl(var(--success))' : 'hsl(var(--text-dim))',
-                    backgroundColor: autoRefreshEnabled ? 'hsl(var(--success) / 0.1)' : 'transparent'
+                    border: `1px solid ${autoRefreshEnabled ? THEME.accent : THEME.border}`,
+                    color: autoRefreshEnabled ? THEME.accent : THEME.textDim,
+                    backgroundColor: autoRefreshEnabled ? THEME.accentLight : 'transparent'
                   }}
                   data-testid="button-toggle-auto-refresh"
                 >
@@ -657,9 +678,9 @@ export default function TempMail() {
                   disabled={isRefreshing}
                   className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
                   style={{ 
-                    border: `1px solid ${isRefreshing ? 'hsl(var(--accent))' : 'hsl(var(--border-subtle))'}`,
-                    color: isRefreshing ? 'hsl(var(--accent))' : 'hsl(var(--text-secondary))',
-                    backgroundColor: isRefreshing ? 'hsl(var(--accent) / 0.1)' : 'transparent'
+                    border: `1px solid ${isRefreshing ? THEME.primary : THEME.border}`,
+                    color: isRefreshing ? THEME.primary : THEME.textSecondary,
+                    backgroundColor: isRefreshing ? THEME.primaryLight : 'transparent'
                   }}
                   data-testid="button-refresh-inbox"
                 >
@@ -672,29 +693,29 @@ export default function TempMail() {
             <div 
               className="divide-y"
               style={{ 
-                border: '1px solid hsl(var(--border-subtle))',
-                borderColor: 'hsl(var(--border-subtle))'
+                border: `1px solid ${THEME.border}`,
+                borderColor: THEME.border
               }}
             >
               {messages.length === 0 ? (
                 <div 
                   className="flex flex-col items-center justify-center p-8 text-center"
-                  style={{ backgroundColor: 'hsl(var(--surface-elevated))' }}
+                  style={{ backgroundColor: THEME.surfaceElevated }}
                 >
                   <Inbox 
                     size={32} 
                     className="mb-3"
-                    style={{ color: 'hsl(var(--text-dim))' }}
+                    style={{ color: THEME.textDim }}
                   />
                   <p 
                     className="text-xs"
-                    style={{ color: 'hsl(var(--text-dim))' }}
+                    style={{ color: THEME.textDim }}
                   >
                     No emails yet. Waiting for incoming messages...
                   </p>
                   <p 
                     className="text-[10px] mt-1"
-                    style={{ color: 'hsl(var(--text-dim) / 0.6)' }}
+                    style={{ color: 'rgba(255, 255, 255, 0.3)' }}
                   >
                     Auto-refresh is {autoRefreshEnabled ? 'enabled' : 'disabled'}
                   </p>
@@ -703,11 +724,11 @@ export default function TempMail() {
                 messages.map((message) => (
                   <div
                     key={message.id}
-                    className="flex items-start gap-3 p-3 transition-colors cursor-pointer"
+                    className="flex items-start gap-3 p-3 transition-colors cursor-pointer hover:opacity-90"
                     style={{ 
                       backgroundColor: message.seen 
-                        ? 'hsl(var(--surface-elevated))' 
-                        : 'hsl(var(--surface-elevated) / 0.5)',
+                        ? THEME.surfaceElevated 
+                        : THEME.surface,
                     }}
                     onClick={() => handleViewMessage(message.id)}
                     data-testid={`email-item-${message.id}`}
@@ -716,37 +737,38 @@ export default function TempMail() {
                       className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
                       style={{ 
                         backgroundColor: message.seen 
-                          ? 'hsl(var(--text-dim))' 
-                          : 'hsl(var(--accent))'
+                          ? THEME.textDim 
+                          : THEME.accent,
+                        boxShadow: message.seen ? 'none' : `0 0 8px ${THEME.accent}`
                       }}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span 
                           className="text-xs font-medium truncate"
-                          style={{ color: 'hsl(var(--text-primary))' }}
+                          style={{ color: THEME.textPrimary }}
                         >
                           {message.from.name || message.from.address}
                         </span>
                         <span 
                           className="text-[10px] flex-shrink-0"
-                          style={{ color: 'hsl(var(--text-dim))' }}
+                          style={{ color: THEME.textDim }}
                         >
                           {formatDate(message.createdAt)}
                         </span>
                       </div>
                       <div 
                         className="text-xs truncate mb-1 flex items-center gap-1"
-                        style={{ color: 'hsl(var(--text-secondary))' }}
+                        style={{ color: THEME.textSecondary }}
                       >
                         {message.subject || '(No subject)'}
                         {message.hasAttachments && (
-                          <Paperclip size={10} style={{ color: 'hsl(var(--text-dim))' }} />
+                          <Paperclip size={10} style={{ color: THEME.accent }} />
                         )}
                       </div>
                       <div 
                         className="text-[10px] truncate"
-                        style={{ color: 'hsl(var(--text-dim))' }}
+                        style={{ color: THEME.textDim }}
                       >
                         {message.intro || 'No preview available'}
                       </div>
@@ -758,7 +780,7 @@ export default function TempMail() {
                           handleViewMessage(message.id);
                         }}
                         className="p-1.5 transition-opacity hover:opacity-70"
-                        style={{ color: 'hsl(var(--text-dim))' }}
+                        style={{ color: THEME.primary }}
                         data-testid={`button-view-${message.id}`}
                       >
                         <Eye size={12} />
@@ -785,26 +807,27 @@ export default function TempMail() {
         {selectedMessage && (
           <div 
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ backgroundColor: 'hsl(var(--surface) / 0.9)' }}
+            style={{ backgroundColor: 'rgba(10, 15, 26, 0.95)' }}
             onClick={() => setSelectedMessage(null)}
           >
             <div 
               className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
               style={{ 
-                backgroundColor: 'hsl(var(--surface-elevated))',
-                border: '1px solid hsl(var(--border-subtle))'
+                backgroundColor: THEME.surfaceElevated,
+                border: `1px solid ${THEME.border}`,
+                boxShadow: `0 0 40px ${THEME.accentLight}`
               }}
               onClick={(e) => e.stopPropagation()}
               data-testid="modal-email-detail"
             >
               <div 
                 className="flex items-center justify-between gap-4 p-4 border-b"
-                style={{ borderColor: 'hsl(var(--border-subtle))' }}
+                style={{ borderColor: THEME.border }}
               >
                 <button
                   onClick={() => setSelectedMessage(null)}
                   className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
-                  style={{ color: 'hsl(var(--text-dim))' }}
+                  style={{ color: THEME.textDim }}
                   data-testid="button-close-modal"
                 >
                   <ArrowLeft size={14} />
@@ -817,8 +840,8 @@ export default function TempMail() {
                       disabled={isSaving}
                       className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
                       style={{ 
-                        border: '1px solid hsl(var(--accent) / 0.3)',
-                        color: 'hsl(var(--accent))'
+                        border: `1px solid ${THEME.primaryBorder}`,
+                        color: THEME.primary
                       }}
                       data-testid="button-save-email"
                     >
@@ -847,29 +870,29 @@ export default function TempMail() {
                 </div>
               </div>
               
-              <div className="p-4 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+              <div className="p-4 border-b" style={{ borderColor: THEME.border }}>
                 <h2 
                   className="text-sm font-medium mb-3"
-                  style={{ color: 'hsl(var(--text-primary))' }}
+                  style={{ color: THEME.textPrimary }}
                 >
                   {selectedMessage.subject || '(No subject)'}
                 </h2>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-xs">
-                    <span style={{ color: 'hsl(var(--text-dim))' }}>From:</span>
-                    <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                    <span style={{ color: THEME.textDim }}>From:</span>
+                    <span style={{ color: THEME.textSecondary }}>
                       {selectedMessage.from.name} &lt;{selectedMessage.from.address}&gt;
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span style={{ color: 'hsl(var(--text-dim))' }}>To:</span>
-                    <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                    <span style={{ color: THEME.textDim }}>To:</span>
+                    <span style={{ color: THEME.textSecondary }}>
                       {selectedMessage.to.map(t => t.address).join(', ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
-                    <span style={{ color: 'hsl(var(--text-dim))' }}>Date:</span>
-                    <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                    <span style={{ color: THEME.textDim }}>Date:</span>
+                    <span style={{ color: THEME.textSecondary }}>
                       {formatDate(selectedMessage.createdAt)}
                     </span>
                   </div>
@@ -879,11 +902,11 @@ export default function TempMail() {
               {selectedMessage.attachments && selectedMessage.attachments.length > 0 && (
                 <div 
                   className="p-4 border-b" 
-                  style={{ borderColor: 'hsl(var(--border-subtle))' }}
+                  style={{ borderColor: THEME.border }}
                 >
                   <div 
                     className="text-[10px] tracking-wider mb-2"
-                    style={{ color: 'hsl(var(--text-dim))' }}
+                    style={{ color: THEME.textDim }}
                   >
                     ATTACHMENTS ({selectedMessage.attachments.length})
                   </div>
@@ -892,17 +915,17 @@ export default function TempMail() {
                       <button
                         key={attachment.id}
                         onClick={() => handleDownloadAttachment(attachment)}
-                        className="flex items-center gap-2 px-3 py-2 text-xs transition-all"
+                        className="flex items-center gap-2 px-3 py-2 text-xs transition-all hover:opacity-80"
                         style={{ 
-                          border: '1px solid hsl(var(--border-subtle))',
-                          backgroundColor: 'hsl(var(--surface))',
-                          color: 'hsl(var(--text-secondary))'
+                          border: `1px solid ${THEME.primaryBorder}`,
+                          backgroundColor: THEME.surface,
+                          color: THEME.primary
                         }}
                         data-testid={`button-download-${attachment.id}`}
                       >
                         <Download size={12} />
                         <span className="truncate max-w-[150px]">{attachment.filename}</span>
-                        <span style={{ color: 'hsl(var(--text-dim))' }}>
+                        <span style={{ color: THEME.textDim }}>
                           ({formatFileSize(attachment.size)})
                         </span>
                       </button>
@@ -917,7 +940,7 @@ export default function TempMail() {
                     <Loader2 
                       size={24} 
                       className="animate-spin"
-                      style={{ color: 'hsl(var(--accent))' }}
+                      style={{ color: THEME.accent }}
                     />
                   </div>
                 ) : (
@@ -933,13 +956,13 @@ export default function TempMail() {
         <div 
           className="mt-8 p-3 text-center"
           style={{ 
-            backgroundColor: 'hsl(var(--surface-elevated) / 0.5)',
-            border: '1px solid hsl(var(--border-subtle))'
+            backgroundColor: THEME.surfaceElevated,
+            border: `1px solid ${THEME.border}`
           }}
         >
           <p 
             className="text-[10px]"
-            style={{ color: 'hsl(var(--text-dim))' }}
+            style={{ color: THEME.textDim }}
           >
             Powered by Mail.tm. Emails are automatically deleted after 1 hour.
             {isAuthenticated && ' Save important emails to your account before they expire.'}
