@@ -236,6 +236,11 @@ export function useTempMail() {
     setError(null);
   }, [stopAutoRefresh]);
 
+  const setAccountFromStorage = useCallback((savedAccount: TempMailAccount) => {
+    setAccount(savedAccount);
+    setMessages([]);
+  }, []);
+
   useEffect(() => {
     return () => {
       stopAutoRefresh();
@@ -256,6 +261,7 @@ export function useTempMail() {
     stopAutoRefresh,
     copyToClipboard,
     reset,
+    setAccountFromStorage,
     clearError: () => setError(null),
   };
 }

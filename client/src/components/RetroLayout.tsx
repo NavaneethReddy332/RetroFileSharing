@@ -160,7 +160,11 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <span style={{ color: 'hsl(var(--border-dim))' }}>/</span>
             <Link 
               href="/temp-mail" 
-              className={`text-xs no-underline transition-colors ${location === '/temp-mail' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--text-dim))] hover:text-[hsl(var(--text-secondary))]'}`}
+              className={`text-xs no-underline transition-colors px-2 py-1 ${location === '/temp-mail' ? 'text-[hsl(var(--surface))]' : 'text-[hsl(var(--accent))]'}`}
+              style={{
+                backgroundColor: location === '/temp-mail' ? 'hsl(var(--accent))' : 'hsl(var(--accent) / 0.15)',
+                border: '1px solid hsl(var(--accent))',
+              }}
               data-testid="link-temp-mail"
             >
               TEMP MAIL

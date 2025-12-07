@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { RetroLayout } from '../components/RetroLayout';
 import { useTempMail } from '../hooks/useTempMail';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   Mail, 
   Copy, 
@@ -17,6 +18,8 @@ import {
   X
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+const TEMP_MAIL_STORAGE_KEY = 'aerosend_temp_mail';
 
 interface MessageDetail {
   id: string;
@@ -47,12 +50,37 @@ export default function TempMail() {
     copyToClipboard,
     reset,
     clearError,
+    setAccountFromStorage,
   } = useTempMail();
 
+  const { user, isAuthenticated } = useAuth();
   const [copied, setCopied] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<MessageDetail | null>(null);
   const [isLoadingMessage, setIsLoadingMessage] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const storageKey = `${TEMP_MAIL_STORAGE_KEY}_${user.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const savedAccount = JSON.parse(saved);
+          setAccountFromStorage(savedAccount);
+        } catch (e) {
+          console.warn('Failed to restore temp mail account');
+        }
+      }
+    }
+  }, [isAuthenticated, user, setAccountFromStorage]);
+
+  useEffect(() => {
+    if (isAuthenticated && user && account) {
+      const storageKey = `${TEMP_MAIL_STORAGE_KEY}_${user.id}`;
+      localStorage.setItem(storageKey, JSON.stringify(account));
+    }
+  }, [account, isAuthenticated, user]);
 
   useEffect(() => {
     if (account && autoRefreshEnabled) {
@@ -76,7 +104,17 @@ export default function TempMail() {
   };
 
   const handleRefresh = async () => {
+    setIsRefreshing(true);
     await fetchMessages();
+    setTimeout(() => setIsRefreshing(false), 500);
+  };
+
+  const handleNewEmailWithClear = () => {
+    if (isAuthenticated && user) {
+      const storageKey = `${TEMP_MAIL_STORAGE_KEY}_${user.id}`;
+      localStorage.removeItem(storageKey);
+    }
+    reset();
   };
 
   const handleViewMessage = async (messageId: string) => {
@@ -95,9 +133,6 @@ export default function TempMail() {
     }
   };
 
-  const handleNewEmail = () => {
-    reset();
-  };
 
   const formatDate = (dateStr: string) => {
     try {
@@ -317,7 +352,7 @@ export default function TempMail() {
                     {copied ? 'COPIED' : 'COPY'}
                   </button>
                   <button
-                    onClick={handleNewEmail}
+                    onClick={handleNewEmailWithClear}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-wider transition-all"
                     style={{ 
                       border: '1px solid hsl(var(--border-subtle))',
@@ -358,16 +393,17 @@ export default function TempMail() {
                 </button>
                 <button
                   onClick={handleRefresh}
-                  disabled={isLoading}
+                  disabled={isRefreshing}
                   className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
                   style={{ 
-                    border: '1px solid hsl(var(--border-subtle))',
-                    color: 'hsl(var(--text-secondary))'
+                    border: `1px solid ${isRefreshing ? 'hsl(var(--accent))' : 'hsl(var(--border-subtle))'}`,
+                    color: isRefreshing ? 'hsl(var(--accent))' : 'hsl(var(--text-secondary))',
+                    backgroundColor: isRefreshing ? 'hsl(var(--accent) / 0.1)' : 'transparent'
                   }}
                   data-testid="button-refresh-inbox"
                 >
-                  <RefreshCw size={10} className={isLoading ? 'animate-spin' : ''} />
-                  REFRESH
+                  <RefreshCw size={10} className={isRefreshing ? 'animate-spin' : ''} />
+                  {isRefreshing ? 'REFRESHING...' : 'REFRESH'}
                 </button>
               </div>
             </div>
