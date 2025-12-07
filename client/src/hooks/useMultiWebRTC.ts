@@ -20,6 +20,7 @@ function getIceServers(): RTCIceServer[] {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
   ];
 
   const turnUrl = import.meta.env.VITE_TURN_URL;
@@ -27,11 +28,13 @@ function getIceServers(): RTCIceServer[] {
   const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
 
   if (turnUrl && turnUsername && turnCredential) {
-    servers.push({
-      urls: turnUrl,
-      username: turnUsername,
-      credential: turnCredential,
-    });
+    servers.push(
+      { urls: turnUrl, username: turnUsername, credential: turnCredential },
+      { urls: turnUrl.replace('turn:', 'turn:') + '?transport=tcp', username: turnUsername, credential: turnCredential },
+    );
+    if (turnUrl.includes(':443')) {
+      servers.push({ urls: turnUrl.replace('turn:', 'turns:') + '?transport=tcp', username: turnUsername, credential: turnCredential });
+    }
   }
 
   return servers;
