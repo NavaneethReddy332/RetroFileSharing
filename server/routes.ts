@@ -8,6 +8,7 @@ import { b2Service } from "./lib/b2";
 import { z } from "zod";
 import Busboy from "busboy";
 import bcrypt from "bcrypt";
+import { OAuth2Client } from "google-auth-library";
 
 interface ReceiverInfo {
   ws: WebSocket;
@@ -647,41 +648,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { credential } = parseResult.data;
 
-      // Decode the JWT token (Google ID token)
-      const parts = credential.split('.');
-      if (parts.length !== 3) {
-        return res.status(400).json({ error: "Invalid Google token format" });
-      }
-
-      let payload;
-      try {
-        const base64Url = parts[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = Buffer.from(base64, 'base64').toString('utf-8');
-        payload = JSON.parse(jsonPayload);
-      } catch (e) {
-        return res.status(400).json({ error: "Failed to decode Google token" });
-      }
-
-      // Verify the token issuer and audience
       const googleClientId = process.env.VITE_GOOGLE_CLIENT_ID;
       if (!googleClientId) {
         console.error("Google Client ID not configured");
         return res.status(500).json({ error: "Google authentication not configured" });
       }
 
-      if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
-        return res.status(400).json({ error: "Invalid token issuer" });
+      const client = new OAuth2Client(googleClientId);
+      
+      let payload;
+      try {
+        const ticket = await client.verifyIdToken({
+          idToken: credential,
+          audience: googleClientId,
+        });
+        payload = ticket.getPayload();
+      } catch (e) {
+        console.error("Google token verification failed:", e);
+        return res.status(400).json({ error: "Invalid Google token" });
       }
 
-      if (payload.aud !== googleClientId) {
-        return res.status(400).json({ error: "Invalid token audience" });
+      if (!payload) {
+        return res.status(400).json({ error: "Failed to verify Google token" });
       }
 
-      // Check token expiration
-      const now = Math.floor(Date.now() / 1000);
-      if (payload.exp < now) {
-        return res.status(400).json({ error: "Token has expired" });
+      if (!payload.email_verified) {
+        return res.status(400).json({ error: "Email not verified with Google" });
       }
 
       const email = payload.email?.toLowerCase();
