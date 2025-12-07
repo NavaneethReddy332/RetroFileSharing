@@ -1,4 +1,4 @@
-import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads, type User, type InsertUser, users, type UserFile, type InsertUserFile, userFiles, deletedEmails } from "@shared/schema";
+import { type TransferSession, type InsertTransferSession, transferSessions, type CloudUpload, type InsertCloudUpload, cloudUploads, type User, type InsertUser, users, type UserFile, type InsertUserFile, userFiles, deletedEmails, type SavedEmail, type InsertSavedEmail, savedEmails } from "@shared/schema";
 import { db } from "./db";
 import { eq, lte, and, ne, lt, desc, gt } from "drizzle-orm";
 import { generateSecureCode, generateCloudCode } from "./lib/security";
@@ -33,6 +33,12 @@ export interface IStorage {
   addDeletedEmail(email: string): Promise<void>;
   isEmailBlocked(email: string): Promise<boolean>;
   cleanupOldDeletedEmails(): Promise<void>;
+
+  // Saved emails
+  saveEmail(email: InsertSavedEmail): Promise<SavedEmail>;
+  getSavedEmails(userId: number): Promise<SavedEmail[]>;
+  getSavedEmailById(id: number, userId: number): Promise<SavedEmail | undefined>;
+  deleteSavedEmail(id: number, userId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -283,6 +289,32 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('[CLEANUP] Error cleaning up old deleted emails:', error);
     }
+  }
+
+  async saveEmail(email: InsertSavedEmail): Promise<SavedEmail> {
+    const result = await db.insert(savedEmails).values(email).returning();
+    return result[0];
+  }
+
+  async getSavedEmails(userId: number): Promise<SavedEmail[]> {
+    const result = await db.select().from(savedEmails)
+      .where(eq(savedEmails.userId, userId))
+      .orderBy(desc(savedEmails.savedAt));
+    return result;
+  }
+
+  async getSavedEmailById(id: number, userId: number): Promise<SavedEmail | undefined> {
+    const result = await db.select().from(savedEmails)
+      .where(and(eq(savedEmails.id, id), eq(savedEmails.userId, userId)))
+      .limit(1);
+    return result[0];
+  }
+
+  async deleteSavedEmail(id: number, userId: number): Promise<boolean> {
+    const result = await db.delete(savedEmails)
+      .where(and(eq(savedEmails.id, id), eq(savedEmails.userId, userId)))
+      .returning();
+    return result.length > 0;
   }
 }
 

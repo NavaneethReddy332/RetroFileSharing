@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { RetroLayout } from '../components/RetroLayout';
 import { useTempMail } from '../hooks/useTempMail';
 import { useAuth } from '@/contexts/AuthContext';
+import DOMPurify from 'dompurify';
 import { 
   Mail, 
   Copy, 
@@ -15,11 +16,23 @@ import {
   Loader2,
   Plus,
   Eye,
-  X
+  X,
+  Download,
+  Paperclip,
+  Save,
+  Archive,
+  ChevronDown
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 const TEMP_MAIL_STORAGE_KEY = 'aerosend_temp_mail';
+
+interface Attachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
 
 interface MessageDetail {
   id: string;
@@ -30,6 +43,7 @@ interface MessageDetail {
   text?: string;
   html?: string[];
   hasAttachments: boolean;
+  attachments?: Attachment[];
   size: number;
   createdAt: string;
   seen: boolean;
@@ -41,10 +55,18 @@ export default function TempMail() {
     error,
     account,
     messages,
+    domains,
+    savedEmails,
     createAccount,
+    fetchDomains,
     fetchMessages,
     fetchMessageDetail,
     deleteMessage,
+    downloadAttachment,
+    saveEmail,
+    fetchSavedEmails,
+    deleteSavedEmail,
+    getTimeRemaining,
     startAutoRefresh,
     stopAutoRefresh,
     copyToClipboard,
@@ -59,6 +81,22 @@ export default function TempMail() {
   const [isLoadingMessage, setIsLoadingMessage] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedDomain, setSelectedDomain] = useState<string>('');
+  const [showDomainDropdown, setShowDomainDropdown] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number>(0);
+  const [showSavedEmails, setShowSavedEmails] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [selectedSavedEmail, setSelectedSavedEmail] = useState<any>(null);
+
+  useEffect(() => {
+    fetchDomains();
+  }, [fetchDomains]);
+
+  useEffect(() => {
+    if (domains.length > 0 && !selectedDomain) {
+      setSelectedDomain(domains[0].domain);
+    }
+  }, [domains, selectedDomain]);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -72,8 +110,9 @@ export default function TempMail() {
           console.warn('Failed to restore temp mail account');
         }
       }
+      fetchSavedEmails();
     }
-  }, [isAuthenticated, user, setAccountFromStorage]);
+  }, [isAuthenticated, user, setAccountFromStorage, fetchSavedEmails]);
 
   useEffect(() => {
     if (isAuthenticated && user && account) {
@@ -89,8 +128,23 @@ export default function TempMail() {
     return () => stopAutoRefresh();
   }, [account, autoRefreshEnabled, startAutoRefresh, stopAutoRefresh]);
 
+  useEffect(() => {
+    if (!account) {
+      setTimeRemaining(0);
+      return;
+    }
+
+    const updateTimer = () => {
+      setTimeRemaining(getTimeRemaining());
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [account, getTimeRemaining]);
+
   const handleCreateEmail = async () => {
-    await createAccount();
+    await createAccount(selectedDomain);
   };
 
   const handleCopyEmail = async () => {
@@ -133,6 +187,18 @@ export default function TempMail() {
     }
   };
 
+  const handleDownloadAttachment = async (attachment: Attachment) => {
+    if (selectedMessage) {
+      await downloadAttachment(selectedMessage.id, attachment);
+    }
+  };
+
+  const handleSaveEmail = async () => {
+    if (!selectedMessage || !isAuthenticated) return;
+    setIsSaving(true);
+    await saveEmail(selectedMessage);
+    setIsSaving(false);
+  };
 
   const formatDate = (dateStr: string) => {
     try {
@@ -142,78 +208,46 @@ export default function TempMail() {
     }
   };
 
-  const renderEmailContent = (message: MessageDetail) => {
-    const htmlArray = message.html || [];
-    const hasHtml = htmlArray.length > 0 && htmlArray.some(h => h && h.trim().length > 0);
+  const formatTimeRemaining = (ms: number): string => {
+    if (ms <= 0) return 'Expired';
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const renderEmailContent = (message: MessageDetail | { htmlContent?: string | null; textContent?: string | null }) => {
+    const htmlArray = 'html' in message ? message.html : null;
+    const htmlContent = 'htmlContent' in message ? message.htmlContent : null;
+    const textContent = 'text' in message ? message.text : ('textContent' in message ? message.textContent : null);
+    const intro = 'intro' in message ? message.intro : '';
+    
+    const hasHtml = (htmlArray && htmlArray.length > 0 && htmlArray.some(h => h && h.trim().length > 0)) || 
+                   (htmlContent && htmlContent.trim().length > 0);
     
     if (hasHtml) {
-      const htmlContent = htmlArray.join('');
+      const rawHtml = htmlArray ? htmlArray.join('') : (htmlContent || '');
       
-      const processedHtml = htmlContent.replace(/<a\s+/gi, '<a target="_blank" rel="noopener noreferrer" ');
-      
-      const styledHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <base target="_blank">
-          <style>
-            body {
-              margin: 0;
-              padding: 16px;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-              font-size: 14px;
-              line-height: 1.6;
-              color: #e0e0e0;
-              background-color: transparent;
-            }
-            a {
-              color: #00d4aa;
-              text-decoration: underline;
-              cursor: pointer;
-            }
-            a:hover {
-              opacity: 0.8;
-            }
-            img {
-              max-width: 100%;
-              height: auto;
-            }
-            table {
-              max-width: 100%;
-            }
-            button, .button, [class*="btn"], a[href*="verify"], a[href*="confirm"], a[href*="activate"] {
-              display: inline-block;
-              padding: 12px 24px;
-              background-color: #00d4aa;
-              color: #000 !important;
-              text-decoration: none !important;
-              border-radius: 4px;
-              font-weight: 600;
-              margin: 8px 0;
-              cursor: pointer;
-            }
-          </style>
-        </head>
-        <body>
-          ${processedHtml}
-        </body>
-        </html>
-      `;
+      const cleanHtml = DOMPurify.sanitize(rawHtml, {
+        ADD_TAGS: ['style'],
+        ADD_ATTR: ['target', 'rel'],
+        ALLOW_DATA_ATTR: false,
+      });
       
       return (
-        <iframe
-          srcDoc={styledHtml}
-          className="w-full border-0"
+        <div 
+          className="prose prose-sm max-w-none dark:prose-invert"
           style={{ 
-            minHeight: '400px',
-            height: '100%',
-            backgroundColor: 'transparent'
+            color: 'hsl(var(--text-secondary))',
+            fontSize: '14px',
+            lineHeight: '1.6',
           }}
-          sandbox="allow-popups allow-popups-to-escape-sandbox"
-          title="Email content"
-          data-testid="iframe-email-content"
+          dangerouslySetInnerHTML={{ __html: cleanHtml }}
         />
       );
     }
@@ -223,8 +257,93 @@ export default function TempMail() {
         className="whitespace-pre-wrap text-xs font-mono"
         style={{ color: 'hsl(var(--text-secondary))' }}
       >
-        {message.text || message.intro || 'No content'}
+        {textContent || intro || 'No content'}
       </pre>
+    );
+  };
+
+  const renderSavedEmailView = () => {
+    if (!selectedSavedEmail) return null;
+
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ backgroundColor: 'hsl(var(--surface) / 0.9)' }}
+        onClick={() => setSelectedSavedEmail(null)}
+      >
+        <div 
+          className="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+          style={{ 
+            backgroundColor: 'hsl(var(--surface-elevated))',
+            border: '1px solid hsl(var(--border-subtle))'
+          }}
+          onClick={(e) => e.stopPropagation()}
+          data-testid="modal-saved-email-detail"
+        >
+          <div 
+            className="flex items-center justify-between gap-4 p-4 border-b"
+            style={{ borderColor: 'hsl(var(--border-subtle))' }}
+          >
+            <button
+              onClick={() => setSelectedSavedEmail(null)}
+              className="flex items-center gap-1.5 text-xs transition-opacity hover:opacity-70"
+              style={{ color: 'hsl(var(--text-dim))' }}
+              data-testid="button-close-saved-modal"
+            >
+              <ArrowLeft size={14} />
+              BACK
+            </button>
+            <button
+              onClick={() => {
+                deleteSavedEmail(selectedSavedEmail.id);
+                setSelectedSavedEmail(null);
+              }}
+              className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
+              style={{ 
+                border: '1px solid hsl(var(--error) / 0.3)',
+                color: 'hsl(var(--error))'
+              }}
+              data-testid="button-delete-saved"
+            >
+              <Trash2 size={10} />
+              DELETE
+            </button>
+          </div>
+          
+          <div className="p-4 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
+            <h2 
+              className="text-sm font-medium mb-3"
+              style={{ color: 'hsl(var(--text-primary))' }}
+            >
+              {selectedSavedEmail.subject || '(No subject)'}
+            </h2>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs">
+                <span style={{ color: 'hsl(var(--text-dim))' }}>From:</span>
+                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                  {selectedSavedEmail.fromName} &lt;{selectedSavedEmail.fromAddress}&gt;
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span style={{ color: 'hsl(var(--text-dim))' }}>To:</span>
+                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                  {selectedSavedEmail.toAddress}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span style={{ color: 'hsl(var(--text-dim))' }}>Saved:</span>
+                <span style={{ color: 'hsl(var(--text-secondary))' }}>
+                  {formatDate(selectedSavedEmail.savedAt)}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-auto p-4">
+            {renderEmailContent(selectedSavedEmail)}
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -268,6 +387,76 @@ export default function TempMail() {
           </div>
         )}
 
+        {isAuthenticated && savedEmails.length > 0 && (
+          <div className="mb-4">
+            <button
+              onClick={() => setShowSavedEmails(!showSavedEmails)}
+              className="flex items-center gap-2 px-3 py-2 text-xs transition-all w-full"
+              style={{ 
+                border: '1px solid hsl(var(--border-subtle))',
+                backgroundColor: showSavedEmails ? 'hsl(var(--surface-elevated))' : 'transparent',
+                color: 'hsl(var(--text-secondary))'
+              }}
+              data-testid="button-toggle-saved"
+            >
+              <Archive size={14} />
+              Saved Emails ({savedEmails.length})
+              <ChevronDown 
+                size={14} 
+                className={`ml-auto transition-transform ${showSavedEmails ? 'rotate-180' : ''}`}
+              />
+            </button>
+            
+            {showSavedEmails && (
+              <div 
+                className="mt-2 divide-y"
+                style={{ 
+                  border: '1px solid hsl(var(--border-subtle))',
+                  borderColor: 'hsl(var(--border-subtle))'
+                }}
+              >
+                {savedEmails.map((email) => (
+                  <div
+                    key={email.id}
+                    className="flex items-start gap-3 p-3 transition-colors cursor-pointer"
+                    style={{ backgroundColor: 'hsl(var(--surface-elevated))' }}
+                    onClick={() => setSelectedSavedEmail(email)}
+                    data-testid={`saved-email-item-${email.id}`}
+                  >
+                    <Save 
+                      size={14} 
+                      className="mt-0.5 flex-shrink-0"
+                      style={{ color: 'hsl(var(--accent))' }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span 
+                          className="text-xs font-medium truncate"
+                          style={{ color: 'hsl(var(--text-primary))' }}
+                        >
+                          {email.fromName || email.fromAddress}
+                        </span>
+                        <span 
+                          className="text-[10px] flex-shrink-0"
+                          style={{ color: 'hsl(var(--text-dim))' }}
+                        >
+                          {formatDate(email.savedAt)}
+                        </span>
+                      </div>
+                      <div 
+                        className="text-xs truncate"
+                        style={{ color: 'hsl(var(--text-secondary))' }}
+                      >
+                        {email.subject || '(No subject)'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {!account ? (
           <div 
             className="flex flex-col items-center justify-center p-12 text-center"
@@ -288,12 +477,60 @@ export default function TempMail() {
               Generate Temporary Email
             </h2>
             <p 
-              className="text-xs mb-6 max-w-sm"
+              className="text-xs mb-4 max-w-sm"
               style={{ color: 'hsl(var(--text-dim))' }}
             >
               Create a disposable email address to receive emails. 
               Perfect for signups, verifications, and testing.
             </p>
+
+            {domains.length > 1 && (
+              <div className="mb-4 relative">
+                <button
+                  onClick={() => setShowDomainDropdown(!showDomainDropdown)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs"
+                  style={{ 
+                    border: '1px solid hsl(var(--border-subtle))',
+                    backgroundColor: 'hsl(var(--surface))',
+                    color: 'hsl(var(--text-secondary))'
+                  }}
+                  data-testid="button-domain-dropdown"
+                >
+                  @{selectedDomain}
+                  <ChevronDown size={12} />
+                </button>
+                
+                {showDomainDropdown && (
+                  <div 
+                    className="absolute top-full left-0 mt-1 w-full z-10"
+                    style={{ 
+                      border: '1px solid hsl(var(--border-subtle))',
+                      backgroundColor: 'hsl(var(--surface-elevated))'
+                    }}
+                  >
+                    {domains.map((domain) => (
+                      <button
+                        key={domain.id}
+                        onClick={() => {
+                          setSelectedDomain(domain.domain);
+                          setShowDomainDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-xs text-left transition-colors hover:opacity-70"
+                        style={{ 
+                          color: domain.domain === selectedDomain 
+                            ? 'hsl(var(--accent))' 
+                            : 'hsl(var(--text-secondary))'
+                        }}
+                        data-testid={`domain-option-${domain.id}`}
+                      >
+                        @{domain.domain}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleCreateEmail}
               disabled={isLoading}
@@ -339,6 +576,30 @@ export default function TempMail() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <div 
+                    className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider"
+                    style={{ 
+                      backgroundColor: timeRemaining > 600000 
+                        ? 'hsl(var(--success) / 0.1)' 
+                        : timeRemaining > 300000
+                        ? 'hsl(var(--warning) / 0.1)'
+                        : 'hsl(var(--error) / 0.1)',
+                      color: timeRemaining > 600000 
+                        ? 'hsl(var(--success))' 
+                        : timeRemaining > 300000
+                        ? 'hsl(var(--warning))'
+                        : 'hsl(var(--error))',
+                      border: `1px solid ${timeRemaining > 600000 
+                        ? 'hsl(var(--success) / 0.3)' 
+                        : timeRemaining > 300000
+                        ? 'hsl(var(--warning) / 0.3)'
+                        : 'hsl(var(--error) / 0.3)'}`
+                    }}
+                    data-testid="text-time-remaining"
+                  >
+                    <Clock size={10} />
+                    {formatTimeRemaining(timeRemaining)}
+                  </div>
                   <button
                     onClick={handleCopyEmail}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-wider transition-all"
@@ -475,10 +736,13 @@ export default function TempMail() {
                         </span>
                       </div>
                       <div 
-                        className="text-xs truncate mb-1"
+                        className="text-xs truncate mb-1 flex items-center gap-1"
                         style={{ color: 'hsl(var(--text-secondary))' }}
                       >
                         {message.subject || '(No subject)'}
+                        {message.hasAttachments && (
+                          <Paperclip size={10} style={{ color: 'hsl(var(--text-dim))' }} />
+                        )}
                       </div>
                       <div 
                         className="text-[10px] truncate"
@@ -546,20 +810,41 @@ export default function TempMail() {
                   <ArrowLeft size={14} />
                   BACK
                 </button>
-                <button
-                  onClick={() => {
-                    handleDeleteMessage(selectedMessage.id);
-                  }}
-                  className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
-                  style={{ 
-                    border: '1px solid hsl(var(--error) / 0.3)',
-                    color: 'hsl(var(--error))'
-                  }}
-                  data-testid="button-delete-current"
-                >
-                  <Trash2 size={10} />
-                  DELETE
-                </button>
+                <div className="flex items-center gap-2">
+                  {isAuthenticated && (
+                    <button
+                      onClick={handleSaveEmail}
+                      disabled={isSaving}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
+                      style={{ 
+                        border: '1px solid hsl(var(--accent) / 0.3)',
+                        color: 'hsl(var(--accent))'
+                      }}
+                      data-testid="button-save-email"
+                    >
+                      {isSaving ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Save size={10} />
+                      )}
+                      SAVE
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      handleDeleteMessage(selectedMessage.id);
+                    }}
+                    className="flex items-center gap-1.5 px-2 py-1 text-[10px] tracking-wider transition-all"
+                    style={{ 
+                      border: '1px solid hsl(var(--error) / 0.3)',
+                      color: 'hsl(var(--error))'
+                    }}
+                    data-testid="button-delete-current"
+                  >
+                    <Trash2 size={10} />
+                    DELETE
+                  </button>
+                </div>
               </div>
               
               <div className="p-4 border-b" style={{ borderColor: 'hsl(var(--border-subtle))' }}>
@@ -590,6 +875,41 @@ export default function TempMail() {
                   </div>
                 </div>
               </div>
+
+              {selectedMessage.attachments && selectedMessage.attachments.length > 0 && (
+                <div 
+                  className="p-4 border-b" 
+                  style={{ borderColor: 'hsl(var(--border-subtle))' }}
+                >
+                  <div 
+                    className="text-[10px] tracking-wider mb-2"
+                    style={{ color: 'hsl(var(--text-dim))' }}
+                  >
+                    ATTACHMENTS ({selectedMessage.attachments.length})
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedMessage.attachments.map((attachment) => (
+                      <button
+                        key={attachment.id}
+                        onClick={() => handleDownloadAttachment(attachment)}
+                        className="flex items-center gap-2 px-3 py-2 text-xs transition-all"
+                        style={{ 
+                          border: '1px solid hsl(var(--border-subtle))',
+                          backgroundColor: 'hsl(var(--surface))',
+                          color: 'hsl(var(--text-secondary))'
+                        }}
+                        data-testid={`button-download-${attachment.id}`}
+                      >
+                        <Download size={12} />
+                        <span className="truncate max-w-[150px]">{attachment.filename}</span>
+                        <span style={{ color: 'hsl(var(--text-dim))' }}>
+                          ({formatFileSize(attachment.size)})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="flex-1 overflow-auto p-4">
                 {isLoadingMessage ? (
@@ -608,6 +928,8 @@ export default function TempMail() {
           </div>
         )}
 
+        {renderSavedEmailView()}
+
         <div 
           className="mt-8 p-3 text-center"
           style={{ 
@@ -620,6 +942,7 @@ export default function TempMail() {
             style={{ color: 'hsl(var(--text-dim))' }}
           >
             Powered by Mail.tm. Emails are automatically deleted after 1 hour.
+            {isAuthenticated && ' Save important emails to your account before they expire.'}
           </p>
         </div>
       </div>

@@ -96,3 +96,27 @@ export const insertDeletedEmailSchema = createInsertSchema(deletedEmails).omit({
 
 export type InsertDeletedEmail = z.infer<typeof insertDeletedEmailSchema>;
 export type DeletedEmail = typeof deletedEmails.$inferSelect;
+
+// Saved temp emails for logged-in users
+export const savedEmails = sqliteTable("saved_emails", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  messageId: text("message_id").notNull(),
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name"),
+  toAddress: text("to_address").notNull(),
+  subject: text("subject"),
+  textContent: text("text_content"),
+  htmlContent: text("html_content"),
+  hasAttachments: integer("has_attachments").notNull().default(0),
+  originalCreatedAt: text("original_created_at").notNull(),
+  savedAt: text("saved_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const insertSavedEmailSchema = createInsertSchema(savedEmails).omit({
+  id: true,
+  savedAt: true,
+});
+
+export type InsertSavedEmail = z.infer<typeof insertSavedEmailSchema>;
+export type SavedEmail = typeof savedEmails.$inferSelect;

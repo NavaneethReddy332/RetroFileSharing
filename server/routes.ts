@@ -1544,5 +1544,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Download attachment from temp mail
+  app.get("/api/tempmail/messages/:messageId/attachments/:attachmentId", async (req, res) => {
+    try {
+      const { messageId, attachmentId } = req.params;
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/messages/${messageId}/attachment/${attachmentId}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch attachment' });
+      }
+      
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const contentDisposition = response.headers.get('content-disposition');
+      
+      res.setHeader('Content-Type', contentType);
+      if (contentDisposition) {
+        res.setHeader('Content-Disposition', contentDisposition);
+      }
+      
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error('Temp mail attachment download error:', error);
+      res.status(500).json({ error: 'Failed to download attachment' });
+    }
+  });
+
+  // Save email for logged-in users
+  app.post("/api/tempmail/saved", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Login required to save emails' });
+      }
+
+      const { messageId, fromAddress, fromName, toAddress, subject, textContent, htmlContent, hasAttachments, originalCreatedAt } = req.body;
+
+      if (!messageId || !fromAddress || !toAddress || !originalCreatedAt) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      const savedEmail = await storage.saveEmail({
+        userId,
+        messageId,
+        fromAddress,
+        fromName: fromName || null,
+        toAddress,
+        subject: subject || null,
+        textContent: textContent || null,
+        htmlContent: htmlContent || null,
+        hasAttachments: hasAttachments ? 1 : 0,
+        originalCreatedAt,
+      });
+
+      res.json(savedEmail);
+    } catch (error) {
+      console.error('Save email error:', error);
+      res.status(500).json({ error: 'Failed to save email' });
+    }
+  });
+
+  // Get saved emails for logged-in user
+  app.get("/api/tempmail/saved", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Login required' });
+      }
+
+      const emails = await storage.getSavedEmails(userId);
+      res.json(emails);
+    } catch (error) {
+      console.error('Get saved emails error:', error);
+      res.status(500).json({ error: 'Failed to get saved emails' });
+    }
+  });
+
+  // Get single saved email
+  app.get("/api/tempmail/saved/:id", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Login required' });
+      }
+
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid email ID' });
+      }
+
+      const email = await storage.getSavedEmailById(id, userId);
+      if (!email) {
+        return res.status(404).json({ error: 'Email not found' });
+      }
+
+      res.json(email);
+    } catch (error) {
+      console.error('Get saved email error:', error);
+      res.status(500).json({ error: 'Failed to get email' });
+    }
+  });
+
+  // Delete saved email
+  app.delete("/api/tempmail/saved/:id", async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: 'Login required' });
+      }
+
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid email ID' });
+      }
+
+      const deleted = await storage.deleteSavedEmail(id, userId);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Email not found' });
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error('Delete saved email error:', error);
+      res.status(500).json({ error: 'Failed to delete email' });
+    }
+  });
+
   return httpServer;
 }
