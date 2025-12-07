@@ -1290,5 +1290,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }, 30000);
 
+  // Temp Mail API Proxy Routes (Mail.tm)
+  const MAIL_TM_API = 'https://api.mail.tm';
+
+  app.get("/api/tempmail/domains", async (_req, res) => {
+    try {
+      const response = await fetch(`${MAIL_TM_API}/domains`);
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch domains' });
+      }
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Temp mail domains error:', error);
+      res.status(500).json({ error: 'Failed to fetch domains' });
+    }
+  });
+
+  app.post("/api/tempmail/accounts", async (req, res) => {
+    try {
+      const { address, password } = req.body;
+      
+      if (!address || !password) {
+        return res.status(400).json({ error: 'Address and password are required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, password }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Temp mail account creation error:', error);
+      res.status(500).json({ error: 'Failed to create account' });
+    }
+  });
+
+  app.post("/api/tempmail/token", async (req, res) => {
+    try {
+      const { address, password } = req.body;
+      
+      if (!address || !password) {
+        return res.status(400).json({ error: 'Address and password are required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, password }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return res.status(response.status).json(errorData);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Temp mail token error:', error);
+      res.status(500).json({ error: 'Failed to get token' });
+    }
+  });
+
+  app.get("/api/tempmail/messages", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/messages`, {
+        headers: { 'Authorization': authHeader },
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch messages' });
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Temp mail messages error:', error);
+      res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+  });
+
+  app.get("/api/tempmail/messages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/messages/${id}`, {
+        headers: { 'Authorization': authHeader },
+      });
+      
+      if (!response.ok) {
+        return res.status(response.status).json({ error: 'Failed to fetch message' });
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error('Temp mail message detail error:', error);
+      res.status(500).json({ error: 'Failed to fetch message' });
+    }
+  });
+
+  app.delete("/api/tempmail/messages/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const authHeader = req.headers.authorization;
+      
+      if (!authHeader) {
+        return res.status(401).json({ error: 'Authorization header required' });
+      }
+
+      const response = await fetch(`${MAIL_TM_API}/messages/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': authHeader },
+      });
+      
+      if (response.ok || response.status === 204) {
+        res.status(204).send();
+      } else {
+        res.status(response.status).json({ error: 'Failed to delete message' });
+      }
+    } catch (error) {
+      console.error('Temp mail message delete error:', error);
+      res.status(500).json({ error: 'Failed to delete message' });
+    }
+  });
+
   return httpServer;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
-import { Send, Download, Info, X, ChevronLeft, User, LogIn, LogOut, FolderOpen, MessageSquare, Settings } from 'lucide-react';
+import { Send, Download, Info, X, ChevronLeft, User, LogIn, LogOut, FolderOpen, MessageSquare, Settings, Mail } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from './AuthModal';
 import { LoginReminder } from './LoginReminder';
@@ -156,6 +156,14 @@ export function RetroLayout({ children }: RetroLayoutProps) {
               data-testid="link-receive"
             >
               RECEIVE
+            </Link>
+            <span style={{ color: 'hsl(var(--border-dim))' }}>/</span>
+            <Link 
+              href="/temp-mail" 
+              className={`text-xs no-underline transition-colors ${location === '/temp-mail' ? 'text-[hsl(var(--accent))]' : 'text-[hsl(var(--text-dim))] hover:text-[hsl(var(--text-secondary))]'}`}
+              data-testid="link-temp-mail"
+            >
+              TEMP MAIL
             </Link>
             
             {!isLoading && (
@@ -406,6 +414,20 @@ export function RetroLayout({ children }: RetroLayoutProps) {
             <div>
               <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Feedback</div>
               <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Share your thoughts</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/temp-mail"
+            className="relative flex items-center gap-3 p-3 minimal-border transition-all no-underline"
+            onClick={() => setIsSidebarOpen(false)}
+            onMouseEnter={handleLinkMouseEnter}
+            data-testid="sidebar-link-temp-mail"
+          >
+            <Mail size={14} style={{ color: 'hsl(var(--accent))' }} />
+            <div>
+              <div className="text-xs" style={{ color: 'hsl(var(--text-primary))' }}>Temp Mail</div>
+              <div className="text-[10px]" style={{ color: 'hsl(var(--text-dim))' }}>Disposable email inbox</div>
             </div>
           </Link>
         </div>

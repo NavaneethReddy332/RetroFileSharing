@@ -11,6 +11,7 @@ import YourFiles from "./pages/YourFiles";
 import About from "./pages/About";
 import Feedback from "./pages/Feedback";
 import Account from "./pages/Account";
+import TempMail from "./pages/TempMail";
 import NotFound from "./pages/not-found";
 
 const pageVariants = {
@@ -47,6 +48,7 @@ function AnimatedRoutes() {
           <Route path="/account" component={Account} />
           <Route path="/about" component={About} />
           <Route path="/feedback" component={Feedback} />
+          <Route path="/temp-mail" component={TempMail} />
           <Route component={NotFound} />
         </Switch>
       </motion.div>
