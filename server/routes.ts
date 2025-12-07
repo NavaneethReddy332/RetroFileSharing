@@ -694,7 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!user) {
         // Create new user with Google auth (no password needed)
-        const username = name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
+        const username = (name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
         let finalUsername = username;
         
         // Check if username exists and generate unique one
