@@ -108,6 +108,76 @@ export default function TempMail() {
   };
 
   const renderEmailContent = (message: MessageDetail) => {
+    const htmlArray = message.html || [];
+    const hasHtml = htmlArray.length > 0 && htmlArray.some(h => h && h.trim().length > 0);
+    
+    if (hasHtml) {
+      const htmlContent = htmlArray.join('');
+      
+      const styledHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              margin: 0;
+              padding: 16px;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+              font-size: 14px;
+              line-height: 1.6;
+              color: #e0e0e0;
+              background-color: transparent;
+            }
+            a {
+              color: #00d4aa;
+              text-decoration: underline;
+            }
+            a:hover {
+              opacity: 0.8;
+            }
+            img {
+              max-width: 100%;
+              height: auto;
+            }
+            table {
+              max-width: 100%;
+            }
+            button, .button, [class*="btn"], a[href*="verify"], a[href*="confirm"], a[href*="activate"] {
+              display: inline-block;
+              padding: 12px 24px;
+              background-color: #00d4aa;
+              color: #000 !important;
+              text-decoration: none !important;
+              border-radius: 4px;
+              font-weight: 600;
+              margin: 8px 0;
+            }
+          </style>
+        </head>
+        <body>
+          ${htmlContent}
+        </body>
+        </html>
+      `;
+      
+      return (
+        <iframe
+          srcDoc={styledHtml}
+          className="w-full border-0"
+          style={{ 
+            minHeight: '400px',
+            height: '100%',
+            backgroundColor: 'transparent'
+          }}
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+          title="Email content"
+          data-testid="iframe-email-content"
+        />
+      );
+    }
+    
     return (
       <pre 
         className="whitespace-pre-wrap text-xs font-mono"
