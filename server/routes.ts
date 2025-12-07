@@ -620,6 +620,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  const googleAuthSchema = z.object({
+    credential: z.string().min(1),
+  });
+
+  app.post("/api/auth/google", async (req, res) => {
+    try {
+      const clientIP = getClientIP(req);
+      const rateLimit = checkRateLimit(`auth:${clientIP}`, 10, 60000);
+      
+      if (!rateLimit.allowed) {
+        return res.status(429).json({ 
+          error: "Too many requests. Please try again later.",
+          retryAfter: Math.ceil(rateLimit.resetIn / 1000)
+        });
+      }
+
+      const parseResult = googleAuthSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data",
+          details: parseResult.error.errors.map(e => e.message)
+        });
+      }
+
+      const { credential } = parseResult.data;
+
+      // Decode the JWT token (Google ID token)
+      const parts = credential.split('.');
+      if (parts.length !== 3) {
+        return res.status(400).json({ error: "Invalid Google token format" });
+      }
+
+      let payload;
+      try {
+        const base64Url = parts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = Buffer.from(base64, 'base64').toString('utf-8');
+        payload = JSON.parse(jsonPayload);
+      } catch (e) {
+        return res.status(400).json({ error: "Failed to decode Google token" });
+      }
+
+      // Verify the token issuer and audience
+      const googleClientId = process.env.VITE_GOOGLE_CLIENT_ID;
+      if (!googleClientId) {
+        console.error("Google Client ID not configured");
+        return res.status(500).json({ error: "Google authentication not configured" });
+      }
+
+      if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
+        return res.status(400).json({ error: "Invalid token issuer" });
+      }
+
+      if (payload.aud !== googleClientId) {
+        return res.status(400).json({ error: "Invalid token audience" });
+      }
+
+      // Check token expiration
+      const now = Math.floor(Date.now() / 1000);
+      if (payload.exp < now) {
+        return res.status(400).json({ error: "Token has expired" });
+      }
+
+      const email = payload.email?.toLowerCase();
+      const name = payload.name || payload.email?.split('@')[0];
+
+      if (!email) {
+        return res.status(400).json({ error: "Email not provided by Google" });
+      }
+
+      // Check if email is blocked
+      const isBlocked = await storage.isEmailBlocked(email);
+      if (isBlocked) {
+        return res.status(400).json({ error: "This email cannot be used for authentication at this time." });
+      }
+
+      // Check if user exists
+      let user = await storage.getUserByEmail(email);
+      
+      if (!user) {
+        // Create new user with Google auth (no password needed)
+        const username = name.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
+        let finalUsername = username;
+        
+        // Check if username exists and generate unique one
+        let usernameExists = await storage.getUserByUsername(finalUsername);
+        let counter = 1;
+        while (usernameExists) {
+          finalUsername = `${username}_${counter}`;
+          usernameExists = await storage.getUserByUsername(finalUsername);
+          counter++;
+        }
+
+        // Create user with a random password hash (they'll use Google to login)
+        const randomPassword = await bcrypt.hash(Math.random().toString(36), 10);
+        
+        user = await storage.createUser({
+          username: finalUsername,
+          email: email,
+          passwordHash: randomPassword,
+        });
+      }
+
+      req.session.userId = user.id;
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+      });
+    } catch (error) {
+      console.error("Google auth error:", error);
+      res.status(500).json({ error: "Failed to authenticate with Google" });
+    }
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     try {
       const userId = req.session.userId;

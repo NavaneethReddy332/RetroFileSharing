@@ -1,7 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, User, Mail, Lock, AlertCircle, Loader2, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+            auto_select?: boolean;
+          }) => void;
+          renderButton: (
+            element: HTMLElement,
+            config: {
+              theme?: 'outline' | 'filled_blue' | 'filled_black';
+              size?: 'large' | 'medium' | 'small';
+              type?: 'standard' | 'icon';
+              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+              shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+              logo_alignment?: 'left' | 'center';
+              width?: number;
+            }
+          ) => void;
+          prompt: () => void;
+        };
+      };
+    };
+  }
+}
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,7 +45,42 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const { login, register } = useAuth();
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const { login, register, loginWithGoogle } = useAuth();
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  const handleGoogleCallback = useCallback(async (response: { credential: string }) => {
+    setError('');
+    setIsGoogleLoading(true);
+    try {
+      await loginWithGoogle(response.credential);
+      setIsGoogleLoading(false);
+      setShowSuccess(true);
+      setTimeout(() => {
+        onClose();
+        setShowSuccess(false);
+      }, 1500);
+    } catch (err: any) {
+      setIsGoogleLoading(false);
+      if (err instanceof Response) {
+        try {
+          const errorData = await err.json();
+          setError(errorData.error || 'Google sign-in failed');
+        } catch {
+          setError(`Google sign-in failed: ${err.statusText || 'Unknown error'}`);
+        }
+      } else if (typeof err?.json === 'function') {
+        try {
+          const errorData = await err.json();
+          setError(errorData.error || 'Google sign-in failed');
+        } catch {
+          setError('Google sign-in failed');
+        }
+      } else {
+        setError(err?.message || 'Google sign-in failed');
+      }
+    }
+  }, [loginWithGoogle, onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -24,6 +88,27 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setError('');
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && googleButtonRef.current && window.google?.accounts?.id) {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (clientId) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCallback,
+        });
+        
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: 'filled_black',
+          size: 'large',
+          type: 'standard',
+          text: 'continue_with',
+          shape: 'rectangular',
+          width: 280,
+        });
+      }
+    }
+  }, [isOpen, handleGoogleCallback]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,6 +390,34 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             )}
           </button>
         </form>
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px" style={{ backgroundColor: 'hsl(var(--border-subtle))' }} />
+          <span className="text-[9px] tracking-wider" style={{ color: 'hsl(var(--text-dim))' }}>OR</span>
+          <div className="flex-1 h-px" style={{ backgroundColor: 'hsl(var(--border-subtle))' }} />
+        </div>
+
+        <div className="flex justify-center">
+          {isGoogleLoading ? (
+            <div 
+              className="w-full py-2 text-xs tracking-wider font-medium flex items-center justify-center gap-2"
+              style={{ 
+                backgroundColor: 'hsl(var(--surface-elevated))',
+                border: '1px solid hsl(var(--border-subtle))',
+                color: 'hsl(var(--text-dim))'
+              }}
+            >
+              <Loader2 size={14} className="animate-spin" />
+              SIGNING IN WITH GOOGLE...
+            </div>
+          ) : (
+            <div 
+              ref={googleButtonRef} 
+              data-testid="button-google-signin"
+              className="flex justify-center"
+            />
+          )}
+        </div>
 
         <div 
           className="mt-4 pt-4 text-center border-t"
